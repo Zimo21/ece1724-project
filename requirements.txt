@@ -1,0 +1,9 @@
+torch
+torchvision
+pymupdf
+img2pdf
+pillow
+numpy
+tqdm
+safetensors
+transformers==4.45.2

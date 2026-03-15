@@ -12,6 +12,7 @@ export default function Home() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const handleFileSelect = (file: File) => {
     const validTypes = ["application/pdf", "image/png", "image/jpeg", "image/jpg"];
@@ -19,6 +20,7 @@ export default function Home() {
       alert("Please upload a PDF or image file (PNG, JPG)");
       return;
     }
+    setSelectedFile(file);
     setFileName(file.name);
     setStatus("uploaded");
     setDownloadUrl(null);
@@ -55,17 +57,22 @@ export default function Home() {
   };
 
   const handleConvert = async () => {
-    if (status !== "uploaded") return;
+    if (status !== "uploaded" || !selectedFile) return;
     
     setStatus("converting");
     
     try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      
       const response = await fetch("/api/convert", {
         method: "POST",
+        body: formData,
       });
       
       if (!response.ok) {
-        throw new Error("Conversion failed");
+        const error = await response.json();
+        throw new Error(error.error || "Conversion failed");
       }
       
       const blob = await response.blob();
@@ -74,7 +81,7 @@ export default function Home() {
       setStatus("done");
     } catch (error) {
       console.error("Conversion error:", error);
-      alert("Failed to convert file. Please try again.");
+      alert(error instanceof Error ? error.message : "Failed to convert file. Please try again.");
       setStatus("uploaded");
     }
   };
@@ -92,6 +99,12 @@ export default function Home() {
       default:
         return "";
     }
+  };
+
+  const getDownloadFileName = () => {
+    if (!fileName) return "converted.zip";
+    const baseName = fileName.replace(/\.[^/.]+$/, "");
+    return `${baseName}.zip`;
   };
 
   return (
@@ -149,11 +162,11 @@ export default function Home() {
           {status === "done" && downloadUrl && (
             <a
               href={downloadUrl}
-              download="converted.md"
+              download={getDownloadFileName()}
               className="inline-flex items-center gap-1 mt-2 text-primary hover:underline"
             >
               <FileText className="h-4 w-4" />
-              Download converted.md
+              Download {getDownloadFileName()}
             </a>
           )}
           {status === "uploaded" && fileName && (
