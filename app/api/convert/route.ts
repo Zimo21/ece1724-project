@@ -3,11 +3,32 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { readFile, writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
-import { existsSync, readdirSync, statSync } from "fs";
+import { existsSync } from "fs";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
 
 const execFileAsync = promisify(execFile);
+
+const USE_DUMMY = process.env.USE_DUMMY_MODEL === "true";
+
+const DUMMY_MARKDOWN = `# Sample Document
+
+This is a **dummy** markdown file generated for testing purposes.
+
+## Section 1
+
+- Item 1
+- Item 2
+- Item 3
+
+### Subsection
+
+\`\`\`python
+def hello():
+    print("Hello, World!")
+\`\`\`
+
+`;
 
 async function createZip(sourceDir: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -20,6 +41,17 @@ async function createZip(sourceDir: string, outputPath: string): Promise<void> {
     archive.pipe(output);
     archive.directory(sourceDir, false);
     archive.finalize();
+  });
+}
+
+async function runDummyConversion(outputDir: string, baseName: string): Promise<void> {
+  await writeFile(join(outputDir, `${baseName}.mmd`), DUMMY_MARKDOWN);
+}
+
+async function runRealConversion(inputPath: string, outputDir: string): Promise<void> {
+  const scriptPath = join(process.cwd(), "run_dpsk_ocr2_torch.py");
+  await execFileAsync("python3", [scriptPath, inputPath, "--output", outputDir], {
+    maxBuffer: 1024 * 1024 * 100,
   });
 }
 
@@ -41,14 +73,17 @@ export async function POST(request: Request) {
     await mkdir(uploadDir, { recursive: true });
     await mkdir(outputDir, { recursive: true });
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await writeFile(inputPath, buffer);
+    if (!USE_DUMMY) {
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      await writeFile(inputPath, buffer);
+    }
 
-    const scriptPath = join(process.cwd(), "run_dpsk_ocr2_torch.py");
-    await execFileAsync("python3", [scriptPath, inputPath, "--output", outputDir], {
-      maxBuffer: 1024 * 1024 * 100,
-    });
+    if (USE_DUMMY) {
+      await runDummyConversion(outputDir, baseName);
+    } else {
+      await runRealConversion(inputPath, outputDir);
+    }
 
     const outputPath = join(outputDir, `${baseName}.mmd`);
     
