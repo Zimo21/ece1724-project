@@ -347,14 +347,16 @@ if __name__ == "__main__":
         print(f"{Colors.RED}Loading image: {input_path}{Colors.RESET}")
         images = load_image(input_path)
     print(f"  {len(images)} page(s) found.")
+    print(f"PROGRESS_TOTAL {len(images)}", flush=True)
 
     # --- Run inference ---
     print(f"{Colors.BLUE}Processing with PyTorch...{Colors.RESET}")
     outputs_list = []
-    for image in tqdm(images, desc="Processing"):
+    for page_idx, image in enumerate(tqdm(images, desc="Processing")):
         result = process_single_image(model, tokenizer, image, prompt_text,
                                       temp_dir, base_size, image_size, crop_mode)
         outputs_list.append(result)
+        print(f"PROGRESS_CURRENT {page_idx + 1}", flush=True)
 
     # --- Build output paths ---
     stem = Path(input_path).stem
