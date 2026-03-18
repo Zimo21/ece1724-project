@@ -134,11 +134,12 @@ def save_outputs(
     raw_texts: list[str],
     output_dir: str | None = None,
 ) -> None:
-    # Group pages by source file
+    # Group pages by source file, preserving insertion order
     grouped: dict[str, list[tuple[Image.Image, str]]] = {}
     for img, src, text in zip(images, sources, raw_texts):
         grouped.setdefault(src, []).append((img, text))
 
+    page_counter = 0
     for src, pages in grouped.items():
         stem = os.path.splitext(os.path.basename(src))[0]
         if output_dir is not None:
@@ -148,10 +149,11 @@ def save_outputs(
         img_dir  = os.path.join(out_dir, "images")
         os.makedirs(img_dir, exist_ok=True)
 
-        md_pages = [
-            process_page(text, img, img_dir, i)
-            for i, (img, text) in enumerate(pages)
-        ]
+        md_pages = []
+        for i, (img, text) in enumerate(pages):
+            md_pages.append(process_page(text, img, img_dir, i))
+            page_counter += 1
+            print(f"PROGRESS_CURRENT {page_counter}", flush=True)
 
         md_path = os.path.join(out_dir, stem + ".md")
         with open(md_path, "w", encoding="utf-8") as f:
@@ -192,6 +194,7 @@ if __name__ == "__main__":
 
     images, labels, sources = load_inputs(args.files)
     print(f"Loaded {len(images)} page(s) from {len(args.files)} file(s).")
+    print(f"PROGRESS_TOTAL {len(images)}", flush=True)
 
     llm = LLM(
         model=MODEL_PATH,

@@ -7,6 +7,7 @@ import archiver from "archiver";
 import { createWriteStream } from "fs";
 
 const USE_DUMMY = process.env.USE_DUMMY_MODEL === "true";
+const USE_VLLM  = process.env.USE_VLLM === "true";
 const pythonCmd = process.env.PYTHON_PATH || "python3";
 
 const DUMMY_MARKDOWN = `# Sample Document
@@ -54,7 +55,7 @@ async function createZip(sourceDir: string, outputPath: string): Promise<void> {
 }
 
 async function runDummyConversion(outputDir: string, baseName: string): Promise<void> {
-  await writeFile(join(outputDir, `${baseName}.mmd`), DUMMY_MARKDOWN);
+  await writeFile(join(outputDir, `${baseName}.md`), DUMMY_MARKDOWN);
 }
 
 function runRealConversion(
@@ -63,7 +64,10 @@ function runRealConversion(
   onProgress: (currentPage: number, totalPages: number) => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const scriptPath = join(process.cwd(), "run_dpsk_ocr2_torch.py");
+    const scriptPath = join(
+      process.cwd(),
+      USE_VLLM ? "run_ocr_vllm.py" : "run_dpsk_ocr2_torch.py"
+    );
     const child = spawn(pythonCmd, [scriptPath, inputPath, "--output", outputDir], {
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -142,7 +146,7 @@ export async function POST(request: Request) {
           });
         }
 
-        const outputPath = join(outputDir, `${baseName}.mmd`);
+        const outputPath = join(outputDir, `${baseName}.md`);
         if (!existsSync(outputPath)) {
           throw new Error(`Output file not found: ${outputPath}`);
         }

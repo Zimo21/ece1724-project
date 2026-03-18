@@ -245,7 +245,7 @@ def parse_args():
     parser.add_argument("--no-stream", action="store_true",
                         help="Disable token streaming to stdout during inference.")
     parser.add_argument("--save-det", action="store_true",
-                        help="Save the raw detection output as <stem>_det.mmd.")
+                        help="Save the raw detection output as <stem>_det.md.")
     parser.add_argument("--save-layouts", action="store_true",
                         help="Save the annotated layout image/PDF as <stem>_layouts.*.")
     return parser.parse_args()
@@ -360,8 +360,8 @@ if __name__ == "__main__":
 
     # --- Build output paths ---
     stem = Path(input_path).stem
-    mmd_det_path = os.path.join(output_path, f"{stem}_det.mmd")
-    mmd_path     = os.path.join(output_path, f"{stem}.mmd")
+    mmd_det_path = os.path.join(output_path, f"{stem}_det.md")
+    mmd_path     = os.path.join(output_path, f"{stem}.md")
     # Layout PDF is only meaningful when there are multiple annotated pages
     pdf_out_path = os.path.join(output_path, f"{stem}_layouts.pdf")
 
