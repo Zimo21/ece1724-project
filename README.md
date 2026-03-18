@@ -4,10 +4,10 @@ To get started, you can choose to run the real model, or run in dummy mode.
 
 There are two backends available for running the real model:
 
-| Backend | Script | CUDA | Key dependency |
-|---------|--------|------|----------------|
-| PyTorch (default) | `run_dpsk_ocr2_torch.py` | any | `transformers==4.45.2` |
-| vLLM | `run_ocr_vllm.py` | 12.8 | `vllm==0.17.1` |
+| Backend           | Script                   | CUDA | Key dependency         |
+| ----------------- | ------------------------ | ---- | ---------------------- |
+| PyTorch (default) | `run_dpsk_ocr2_torch.py` | any  | `transformers==4.45.2` |
+| vLLM              | `run_ocr_vllm.py`        | 12.8 | `vllm==0.17.1`         |
 
 > **Note:** The two backends require incompatible Python environments due to different `transformers` version requirements. Use separate virtual environments for each.
 
@@ -71,3 +71,22 @@ The vLLM backend requires **CUDA 12.8** and a separate Python environment.
    ```bash
    PYTHON_PATH=.venv-vllm/bin/python npm run dev
    ```
+
+## Firebase Auth (Shared Project) Setup
+
+### 1) Create local env file
+
+```bash
+cp .env.example .env.local
+```
+
+### 2) Fill `.env.local`
+
+Paste config values into `.env.local`.
+
+### 3) Run
+
+```bash
+npm install
+npm run dev
+```
