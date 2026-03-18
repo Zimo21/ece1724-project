@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Download } from "lucide-react";
+import { Upload, FileText, Download, Trash2 } from "lucide-react";
 
 type Status = "idle" | "uploaded" | "converting" | "done";
 
@@ -88,6 +88,14 @@ export default function Home() {
     setFileList((prev) =>
       prev.map((item) => (item.id === id ? { ...item, selected } : item))
     );
+  };
+
+  const removeItem = (id: string) => {
+    setFileList((prev) => {
+      const item = prev.find((i) => i.id === id);
+      if (item?.downloadUrl) URL.revokeObjectURL(item.downloadUrl);
+      return prev.filter((i) => i.id !== id);
+    });
   };
 
   const handleConvert = async () => {
@@ -260,13 +268,23 @@ export default function Home() {
                 key={item.id}
                 className="flex items-start gap-2 py-1.5 border-b border-border/50 last:border-0"
               >
-                <input
-                  type="checkbox"
-                  checked={item.selected}
-                  onChange={(e) => setItemSelected(item.id, e.target.checked)}
-                  disabled={item.status === "converting" || item.status === "done"}
-                  className="shrink-0"
-                />
+                {item.status === "done" ? (
+                  <button
+                    onClick={() => removeItem(item.id)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors mt-0.5"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <input
+                    type="checkbox"
+                    checked={item.selected}
+                    onChange={(e) => setItemSelected(item.id, e.target.checked)}
+                    disabled={item.status === "converting"}
+                    className="shrink-0"
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="truncate text-sm" title={item.name}>
@@ -298,7 +316,7 @@ export default function Home() {
                             width:
                               item.totalPages > 0
                                 ? `${Math.max(1, (item.currentPage / item.totalPages) * 100)}%`
-                                : "60%",
+                                : "0%",
                           }}
                         />
                       </div>
