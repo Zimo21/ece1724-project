@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Download, Trash2 } from "lucide-react";
+import { Upload, Download, Trash2 } from "lucide-react";
+import { useAuth } from "./providers/AuthProvider";
+import { signOutUser } from "@/lib/auth/actions";
+import { HistoryDrawer, type HistoryItem } from "@/components/ui/history/historyDrawer";
 
 type Status = "idle" | "uploaded" | "converting" | "done";
 
@@ -19,11 +23,33 @@ type FileItem = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [fileList, setFileList] = useState<FileItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validTypes = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+  const { user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !user) router.replace("/login");
+  }, [authLoading, user, router]);
+
+  if (authLoading || !user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-8">
+        <p>Redirecting…</p>
+      </main>
+    );
+  }
+
+  const validTypes = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+  ];
 
   const getStatusLabel = (item: FileItem) => {
     if (item.error) return "Error";
@@ -39,7 +65,9 @@ export default function Home() {
     const newItems: FileItem[] = arr
       .filter((file) => {
         if (!validTypes.includes(file.type)) {
-          alert(`Skipped ${file.name}: please upload PDF or image (PNG, JPG, WEBP).`);
+          alert(
+            `Skipped ${file.name}: please upload PDF or image (PNG, JPG, WEBP).`
+          );
           return false;
         }
         return true;
@@ -54,8 +82,19 @@ export default function Home() {
         totalPages: 0,
         downloadUrl: null,
       }));
+
     setFileList((prev) => [...prev, ...newItems]);
   };
+
+  // TEMP: stubbed data (later replace with Firestore query)
+  const historyItems: HistoryItem[] = [
+    {
+      id: "1",
+      fileName: "sample-output.zip",
+      createdAtLabel: "Mar 18, 2026 • 10:12 AM",
+      zipUrl: "https://example.com/sample-output.zip",
+    },
+  ];
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -99,6 +138,11 @@ export default function Home() {
   };
 
   const handleConvert = async () => {
+    if (!user) {
+      alert("Please sign in to convert files.");
+      return;
+    }
+
     const toConvert = fileList.filter((item) => item.selected);
     if (toConvert.length === 0) return;
 
@@ -106,7 +150,12 @@ export default function Home() {
       setFileList((prev) =>
         prev.map((i) =>
           i.id === item.id
-            ? { ...i, status: "converting" as Status, currentPage: 0, totalPages: 0 }
+            ? {
+                ...i,
+                status: "converting" as Status,
+                currentPage: 0,
+                totalPages: 0,
+              }
             : i
         )
       );
@@ -122,7 +171,9 @@ export default function Home() {
 
         if (!response.ok) {
           const err = await response.json().catch(() => ({}));
-          throw new Error((err as { error?: string }).error || "Conversion failed");
+          throw new Error(
+            (err as { error?: string }).error || "Conversion failed"
+          );
         }
 
         const reader = response.body?.getReader();
@@ -140,6 +191,7 @@ export default function Home() {
               .split(/\r?\n/)
               .find((line) => line.startsWith("data: "));
             if (!dataLine) continue;
+
             try {
               const payload = JSON.parse(dataLine.slice(6)) as {
                 type: string;
@@ -148,6 +200,7 @@ export default function Home() {
                 zipBase64?: string;
                 message?: string;
               };
+
               if (
                 payload.type === "progress" &&
                 payload.currentPage != null &&
@@ -185,16 +238,25 @@ export default function Home() {
         }
 
         if (errorMessage) throw new Error(errorMessage);
+
         if (zipBase64) {
           const binary = atob(zipBase64);
           const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
           const blob = new Blob([bytes], { type: "application/zip" });
           const url = URL.createObjectURL(blob);
+
           setFileList((prev) =>
             prev.map((i) =>
               i.id === item.id
-                ? { ...i, status: "done" as Status, downloadUrl: url, selected: false }
+                ? {
+                    ...i,
+                    status: "done" as Status,
+                    downloadUrl: url,
+                    selected: false,
+                  }
                 : i
             )
           );
@@ -203,7 +265,9 @@ export default function Home() {
         }
       } catch (error) {
         console.error("Conversion error:", error);
-        const message = error instanceof Error ? error.message : "Conversion failed";
+        const message =
+          error instanceof Error ? error.message : "Conversion failed";
+
         setFileList((prev) =>
           prev.map((i) =>
             i.id === item.id
@@ -211,45 +275,65 @@ export default function Home() {
               : i
           )
         );
+
         alert(message);
       }
     }
-  };
-
-  const getDownloadFileName = (fileName: string) => {
-    const baseName = fileName.replace(/\.[^/.]+$/, "");
-    return `${baseName}.zip`;
   };
 
   const hasSelected = fileList.some((item) => item.selected);
   const hasFiles = fileList.length > 0;
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8">
-      <div className="w-full max-w-md space-y-6">
-        <h1 className="text-2xl font-bold text-center">DeepSeek OCR</h1>
-        <p className="text-muted-foreground text-center text-sm">
-          Convert PDF or images to Markdown
-        </p>
+    <main className="min-h-screen flex items-center justify-center p-6 bg-white text-black">
+      <HistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        items={historyItems}
+      />
 
+      <div className="w-full max-w-3xl border border-black bg-white p-6">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">DeepSeek OCR</h1>
+            <p className="text-sm">Convert PDF or images to Markdown</p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className="text-sm">
+              Signed in as{" "}
+              <span className="font-medium">{user.email ?? user.uid}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+                History
+              </Button>
+              <Button variant="outline" onClick={() => signOutUser()}>
+                Sign out
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Upload box */}
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-            isDragging
-              ? "border-primary bg-primary/10"
-              : "border-border hover:border-primary/50"
-          }`}
           onClick={handleUploadClick}
+          className="mt-6 border border-black p-6 cursor-pointer"
         >
-          <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            Drag and drop files here, or click to select
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Supports PDF, PNG, JPG, WEBP
-          </p>
+          <div className="flex items-center gap-3">
+            <Upload className="h-5 w-5" />
+            <div>
+              <div className="text-sm font-medium">
+                Drag and drop files here, or click to select
+              </div>
+              <div className="text-xs">Supports PDF, PNG, JPG, WEBP</div>
+            </div>
+          </div>
+          {isDragging && <div className="mt-3 text-sm">Drop to add files…</div>}
         </div>
 
         <input
@@ -261,118 +345,121 @@ export default function Home() {
           className="hidden"
         />
 
+        {/* File list */}
         {hasFiles && (
-          <ul className="space-y-2 border rounded-lg p-3 max-h-60 overflow-y-auto">
-            {fileList.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-start gap-2 py-1.5 border-b border-border/50 last:border-0"
-              >
-                {item.status === "done" ? (
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors mt-0.5"
-                    title="Remove"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <input
-                    type="checkbox"
-                    checked={item.selected}
-                    onChange={(e) => setItemSelected(item.id, e.target.checked)}
-                    disabled={item.status === "converting"}
-                    className="shrink-0"
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="truncate text-sm" title={item.name}>
-                      {item.name}
-                    </span>
-                    <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full border shrink-0 ${
-                        item.error
-                          ? "text-destructive border-destructive/30 bg-destructive/5"
-                          : item.status === "done"
-                            ? "text-emerald-700 border-emerald-700/20 bg-emerald-500/10"
-                            : item.status === "converting"
-                              ? "text-primary border-primary/30 bg-primary/10"
-                              : "text-muted-foreground border-border bg-muted/30"
-                      }`}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium">Files</div>
+              <div className="text-sm">
+                {hasSelected
+                  ? `${fileList.filter((i) => i.selected).length} selected`
+                  : "Select file(s) to convert"}
+              </div>
+            </div>
+
+            <ul className="border border-black">
+              {fileList.map((item, idx) => (
+                <li
+                  key={item.id}
+                  className={`p-3 flex items-start gap-3 ${
+                    idx !== fileList.length - 1 ? "border-b border-black" : ""
+                  }`}
+                >
+                  {item.status === "done" ? (
+                    <button
+                      onClick={() => removeItem(item.id)}
+                      className="border border-black px-2 py-1"
+                      title="Remove"
                     >
-                      {getStatusLabel(item)}
-                    </span>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={item.selected}
+                      onChange={(e) =>
+                        setItemSelected(item.id, e.target.checked)
+                      }
+                      disabled={item.status === "converting"}
+                      className="mt-1"
+                    />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium break-all">
+                      {item.name}
+                    </div>
+                    <div className="text-sm">Status: {getStatusLabel(item)}</div>
+
+                    {item.status === "converting" && (
+                      <div className="mt-2">
+                        {/* Progress bar (black/white) */}
+                        <div className="h-2 w-full border border-black">
+                          <div
+                            className="h-full bg-black"
+                            style={{
+                              width:
+                                item.totalPages > 0
+                                  ? `${Math.max(
+                                      1,
+                                      (item.currentPage / item.totalPages) * 100
+                                    )}%`
+                                  : "0%",
+                            }}
+                          />
+                        </div>
+
+                        <div className="mt-1 text-sm">
+                          {item.totalPages > 0
+                            ? `Page ${item.currentPage} of ${item.totalPages}`
+                            : "Starting…"}
+                        </div>
+                      </div>
+                    )}
+
+                    {item.error && (
+                      <div className="mt-2 text-sm">Error: {item.error}</div>
+                    )}
                   </div>
 
-                  {item.status === "converting" && (
-                    <div className="mt-1">
-                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full bg-primary transition-all duration-300 ${
-                            item.totalPages === 0 ? "animate-pulse" : ""
-                          }`}
-                          style={{
-                            width:
-                              item.totalPages > 0
-                                ? `${Math.max(1, (item.currentPage / item.totalPages) * 100)}%`
-                                : "0%",
-                          }}
-                        />
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                        {item.totalPages > 0
-                          ? `Page ${item.currentPage} of ${item.totalPages}`
-                          : "Starting…"}
-                      </p>
-                    </div>
-                  )}
-
-                  {item.error && (
-                    <p className="mt-1 text-xs text-destructive truncate" title={item.error}>
-                      {item.error}
-                    </p>
-                  )}
-                </div>
-
-                <Button
-                  variant="outline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (item.downloadUrl) window.open(item.downloadUrl, "_blank");
-                  }}
-                  disabled={!item.downloadUrl}
-                  className="h-7 px-2 text-xs shrink-0"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </li>
-            ))}
-          </ul>
+                  <Button
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (item.downloadUrl)
+                        window.open(item.downloadUrl, "_blank");
+                    }}
+                    disabled={!item.downloadUrl}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
-        <div className="flex gap-4 justify-center">
+        {/* Actions */}
+        <div className="mt-6 flex gap-3">
           <Button variant="outline" onClick={handleUploadClick}>
             Upload
           </Button>
+
           <Button
             variant="default"
             disabled={!hasSelected}
             onClick={handleConvert}
-            className={!hasSelected ? "opacity-50 cursor-not-allowed" : ""}
           >
             Convert
           </Button>
         </div>
 
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground">
-            {!hasFiles
-              ? "No file uploaded"
-              : hasSelected
-                ? `${fileList.filter((i) => i.selected).length} file(s) selected — click Convert`
-                : "Select one or more files to convert"}
-          </p>
+        <div className="mt-4 text-sm">
+          {!hasFiles
+            ? "No file uploaded"
+            : hasSelected
+              ? `${fileList.filter((i) => i.selected).length} file(s) selected — click Convert`
+              : "Select one or more files to convert"}
         </div>
       </div>
     </main>
