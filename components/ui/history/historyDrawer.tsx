@@ -39,7 +39,6 @@ export function HistoryDrawer({ open, onClose, items }: Props) {
         </div>
 
         <p className="mt-1 text-xs text-muted-foreground">
-          Your previous conversions (from Firestore later).
         </p>
 
         <div className="mt-4 space-y-2 max-h-[calc(100vh-120px)] overflow-y-auto pr-1">
