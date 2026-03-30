@@ -9,11 +9,18 @@ Requires CUDA 12.8 and vLLM.
 """
 
 import argparse
+import asyncio
+import base64
 import io
 import os
 import re
+import sys
 import tempfile
+import threading
+import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
 
 import fitz  # PyMuPDF
 from PIL import Image
@@ -40,12 +47,14 @@ GPU_IDX = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
 EOS = "<｜end▁of▁sentence｜>"
 
 # Regex patterns for post-processing
-_IMAGE_TAG = re.compile(
-    r"<\|ref\|>image<\|/ref\|><\|det\|>(.*?)<\|/det\|>", re.DOTALL
-)
-_OTHER_TAG = re.compile(
-    r"<\|ref\|>.*?<\|/ref\|><\|det\|>.*?<\|/det\|>", re.DOTALL
-)
+_IMAGE_TAG = re.compile(r"<\|ref\|>image<\|/ref\|><\|det\|>(.*?)<\|/det\|>", re.DOTALL)
+_OTHER_TAG = re.compile(r"<\|ref\|>.*?<\|/ref\|><\|det\|>.*?<\|/det\|>", re.DOTALL)
+
+# Regex for vLLM progress
+_VLLM_PROGRESS = re.compile(r"Processed prompts:.*?\|\s*(\d+)/(\d+)")
+
+# Progress queue
+progress_queue = Queue()
 
 app = FastAPI(title="DeepSeek OCR Server (vLLM)")
 
@@ -85,49 +94,189 @@ def load_images(file_bytes: bytes, filename: str) -> list[Image.Image]:
 def process_page(raw: str) -> str:
     """Clean model output: strip EOS, remove layout tags."""
     raw = raw.replace(EOS, "")
-    raw = _IMAGE_TAG.sub("", raw)  # Image references - just remove for now
+    raw = _IMAGE_TAG.sub("", raw)
     raw = _OTHER_TAG.sub("", raw)
     return raw.strip()
 
 
-def run_ocr(images: list[Image.Image]) -> list[str]:
-    """Run vLLM OCR on a list of images."""
+def process_page_with_images(
+    raw: str, page_img: Image.Image, image_dir: str, page_idx: int
+) -> str:
+    """Clean model output: strip EOS, extract embedded images, remove layout tags."""
+    raw = raw.replace(EOS, "")
+    img_count = 0
+
+    def save_image_crop(m):
+        nonlocal img_count
+        try:
+            w, h = page_img.size
+            coords = eval(m.group(1))
+            for box in coords:
+                if not isinstance(box, (list, tuple)) or len(box) != 4:
+                    continue
+                x1 = int(box[0] / 999 * w)
+                y1 = int(box[1] / 999 * h)
+                x2 = int(box[2] / 999 * w)
+                y2 = int(box[3] / 999 * h)
+                if x1 >= x2 or y1 >= y2:
+                    continue
+                name = f"img_{page_idx}_{img_count}.jpg"
+                page_img.crop((x1, y1, x2, y2)).save(os.path.join(image_dir, name))
+                img_count += 1
+            return f"![](images/{name})\n" if img_count > 0 else ""
+        except:
+            return ""
+
+    raw = _IMAGE_TAG.sub(save_image_crop, raw)
+    raw = _OTHER_TAG.sub("", raw)
+    return raw.strip()
+
+
+class ProgressTracker:
+    """Track vLLM progress by capturing stderr."""
+
+    def __init__(self):
+        self.temp_file = None
+        self.original_stderr = None
+        self.read_fd = None
+        self._stop_event = threading.Event()
+
+    def start(self):
+        """Start capturing stderr to file."""
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".log")
+        self.temp_file.close()
+
+        self.original_stderr = os.dup(2)
+
+        log_fd = os.open(self.temp_file.name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        os.dup2(log_fd, 2)
+        os.close(log_fd)
+
+        self.read_fd = os.open(self.temp_file.name, os.O_RDONLY)
+
+        self._stop_event.clear()
+        t = threading.Thread(target=self._reader, daemon=True)
+        t.start()
+
+    def _reader(self):
+        """Read stderr and parse progress."""
+        buf = b""
+        while not self._stop_event.is_set():
+            try:
+                chunk = os.read(self.read_fd, 4096)
+                if chunk:
+                    buf += chunk
+                    os.write(self.original_stderr, chunk)
+
+                    text = buf.decode("utf-8", errors="replace")
+                    parts = re.split(r"[\r\n]", text)
+                    buf = parts[-1].encode("utf-8", errors="replace")
+
+                    for part in parts[:-1]:
+                        match = _VLLM_PROGRESS.search(part)
+                        if match:
+                            current, total = int(match.group(1)), int(match.group(2))
+                            progress_queue.put((current, total))
+                else:
+                    time.sleep(0.05)
+            except:
+                break
+
+        if buf:
+            text = buf.decode("utf-8", errors="replace")
+            match = _VLLM_PROGRESS.search(text)
+            if match:
+                current, total = int(match.group(1)), int(match.group(2))
+                progress_queue.put((current, total))
+
+    def stop(self):
+        """Stop capturing and restore stderr."""
+        self._stop_event.set()
+        time.sleep(0.15)  # Give reader more time to finish
+
+        if self.read_fd:
+            try:
+                os.close(self.read_fd)
+            except:
+                pass
+            self.read_fd = None
+
+        if self.original_stderr:
+            # Clear the progress bar line completely
+            try:
+                os.write(self.original_stderr, b"\r" + b" " * 150 + b"\r\n")
+            except:
+                pass
+            os.dup2(self.original_stderr, 2)
+            os.close(self.original_stderr)
+            self.original_stderr = None
+
+        if self.temp_file and os.path.exists(self.temp_file.name):
+            try:
+                os.remove(self.temp_file.name)
+            except:
+                pass
+            self.temp_file = None
+
+
+def run_ocr_with_progress(images: list[Image.Image]) -> list[str]:
+    """Run vLLM OCR with progress tracking."""
     global llm
 
-    inputs = [
-        {"prompt": PROMPT, "multi_modal_data": {"image": img}}
-        for img in images
-    ]
-    params = SamplingParams(
-        temperature=0.0,
-        max_tokens=8192,
-        skip_special_tokens=False,
-        include_stop_str_in_output=True,
-    )
-    outputs = llm.generate(inputs, params)
-    return [out.outputs[0].text for out in outputs]
+    tracker = ProgressTracker()
+    tracker.start()
+
+    try:
+        inputs = [
+            {"prompt": PROMPT, "multi_modal_data": {"image": img}} for img in images
+        ]
+        params = SamplingParams(
+            temperature=0.0,
+            max_tokens=8192,
+            skip_special_tokens=False,
+            include_stop_str_in_output=True,
+        )
+        outputs = llm.generate(inputs, params)
+        results = [out.outputs[0].text for out in outputs]
+    finally:
+        tracker.stop()
+
+    return results
 
 
 def process_file(file_bytes: bytes, filename: str):
-    """Process a PDF or image file and return markdown content."""
+    """Process a PDF or image file and return zip with markdown and images."""
     images = load_images(file_bytes, filename)
     total_pages = len(images)
 
     raw_texts = run_ocr(images)
 
-    # Process each page
-    md_pages = []
-    for text in raw_texts:
-        cleaned = process_page(text)
-        md_pages.append(cleaned)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        images_dir = os.path.join(tmpdir, "images")
+        os.makedirs(images_dir, exist_ok=True)
 
-    markdown = PAGE_SEP.join(md_pages)
+        md_pages = []
+        for i, (text, img) in enumerate(zip(raw_texts, images)):
+            cleaned = process_page_with_images(text, img, images_dir, i)
+            md_pages.append(cleaned)
 
-    return {
-        "markdown": markdown,
-        "total_pages": total_pages,
-        "processed_pages": total_pages,
-    }
+        markdown = PAGE_SEP.join(md_pages)
+
+        md_path = os.path.join(tmpdir, "output.md")
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(markdown)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(md_path, "output.md")
+            for fname in os.listdir(images_dir):
+                fpath = os.path.join(images_dir, fname)
+                zf.write(fpath, os.path.join("images", fname))
+
+        return {
+            "zipBase64": base64.b64encode(zip_buffer.getvalue()).decode("utf-8"),
+            "total_pages": total_pages,
+        }
 
 
 @app.on_event("startup")
@@ -174,6 +323,7 @@ async def convert(
             return process_file(file_bytes, filename)
 
         import asyncio
+
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(executor, run)
 
@@ -181,6 +331,7 @@ async def convert(
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -195,9 +346,10 @@ async def convert_stream(
 
     Sends SSE events:
     - progress: {"currentPage": int, "totalPages": int}
-    - done: {"markdown": str}
+    - done: {"zipBase64": str}
     - error: {"message": str}
     """
+
     async def generate():
         try:
             file_bytes = await file.read()
@@ -208,32 +360,76 @@ async def convert_stream(
 
             yield f'data: {{"type": "progress", "currentPage": 0, "totalPages": {total_pages}}}\n\n'
 
-            import asyncio
+            import json
+
+            progress_queue.queue.clear()
 
             def run_ocr_task():
-                return run_ocr(images)
+                return run_ocr_with_progress(images)
 
             loop = asyncio.get_event_loop()
-            raw_texts = await loop.run_in_executor(executor, run_ocr_task)
+            future = loop.run_in_executor(executor, run_ocr_task)
 
-            # Process each page and send progress
-            md_pages = []
-            for i, text in enumerate(raw_texts):
-                cleaned = process_page(text)
-                md_pages.append(cleaned)
-                yield f'data: {{"type": "progress", "currentPage": {i + 1}, "totalPages": {total_pages}}}\n\n'
+            # Poll for progress during OCR
+            last_progress = 0
+            while not future.done():
+                try:
+                    while True:
+                        current, _ = progress_queue.get_nowait()
+                        if current > last_progress:
+                            yield f'data: {{"type": "progress", "currentPage": {current}, "totalPages": {total_pages}}}\n\n'
+                            last_progress = current
+                except:
+                    pass
+                await asyncio.sleep(0.05)
 
-            markdown = PAGE_SEP.join(md_pages)
+            raw_texts = await future
 
-            # Escape for JSON
-            import json
-            markdown_json = json.dumps(markdown)
-            yield f'data: {{"type": "done", "markdown": {markdown_json}}}\n\n'
+            # Final drain
+            try:
+                while True:
+                    current, _ = progress_queue.get_nowait()
+                    if current > last_progress:
+                        yield f'data: {{"type": "progress", "currentPage": {current}, "totalPages": {total_pages}}}\n\n'
+                        last_progress = current
+            except:
+                pass
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                images_dir = os.path.join(tmpdir, "images")
+                os.makedirs(images_dir, exist_ok=True)
+
+                md_pages = []
+                for i, (text, img) in enumerate(zip(raw_texts, images)):
+                    cleaned = process_page_with_images(text, img, images_dir, i)
+                    md_pages.append(cleaned)
+                    page_num = i + 1
+                    if page_num > last_progress:
+                        yield f'data: {{"type": "progress", "currentPage": {page_num}, "totalPages": {total_pages}}}\n\n'
+                        last_progress = page_num
+
+                markdown = PAGE_SEP.join(md_pages)
+
+                md_path = os.path.join(tmpdir, "output.md")
+                with open(md_path, "w", encoding="utf-8") as f:
+                    f.write(markdown)
+
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.write(md_path, "output.md")
+                    for fname in os.listdir(images_dir):
+                        fpath = os.path.join(images_dir, fname)
+                        zf.write(fpath, os.path.join("images", fname))
+
+                zip_base64 = base64.b64encode(zip_buffer.getvalue()).decode("utf-8")
+                yield f'data: {{"type": "done", "zipBase64": {json.dumps(zip_base64)}}}\n\n'
 
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             import json
+
             error_json = json.dumps(str(e))
             yield f'data: {{"type": "error", "message": {error_json}}}\n\n'
 

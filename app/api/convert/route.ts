@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { readFile, writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { extname } from "path";
-import { existsSync } from "fs";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
 
@@ -62,7 +61,7 @@ async function runServerConversion(
   outputDir: string,
   baseName: string,
   onProgress: (currentPage: number, totalPages: number) => void
-): Promise<void> {
+): Promise<string> {
   const fileBuffer = await readFile(inputPath);
   const formData = new FormData();
   formData.append("file", new Blob([fileBuffer]), baseName + extname(inputPath));
@@ -84,7 +83,7 @@ async function runServerConversion(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let markdown: string | null = null;
+  let zipBase64: string | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -100,37 +99,40 @@ async function runServerConversion(
           const payload = JSON.parse(line.slice(6));
           if (payload.type === "progress" && payload.currentPage != null && payload.totalPages != null) {
             onProgress(payload.currentPage, payload.totalPages);
-          } else if (payload.type === "done" && payload.markdown != null) {
-            markdown = payload.markdown;
+          } else if (payload.type === "done" && payload.zipBase64 != null) {
+            zipBase64 = payload.zipBase64;
           } else if (payload.type === "error") {
             throw new Error(payload.message || "OCR server error");
           }
-        } catch {
-          // Ignore parse errors for non-JSON lines
+        } catch (e) {
+          if (e instanceof Error && e.message !== "OCR server error" && !e.message.startsWith("OCR server error")) {
+            throw e;
+          }
         }
       }
     }
   }
 
-  // Process any remaining data in buffer
   if (buffer.startsWith("data: ")) {
     try {
       const payload = JSON.parse(buffer.slice(6));
-      if (payload.type === "done" && payload.markdown != null) {
-        markdown = payload.markdown;
+      if (payload.type === "done" && payload.zipBase64 != null) {
+        zipBase64 = payload.zipBase64;
       } else if (payload.type === "error") {
         throw new Error(payload.message || "OCR server error");
       }
-    } catch {
-      // Ignore parse errors
+    } catch (e) {
+      if (e instanceof Error && !e.message.includes("OCR server error")) {
+        throw e;
+      }
     }
   }
 
-  if (markdown == null) {
-    throw new Error("No markdown received from OCR server");
+  if (zipBase64 == null) {
+    throw new Error("No zip received from OCR server");
   }
 
-  await writeFile(join(outputDir, `${baseName}.md`), markdown);
+  return zipBase64;
 }
 
 export async function POST(request: Request) {
@@ -143,53 +145,56 @@ export async function POST(request: Request) {
 
   const inputName = file.name;
   const baseName = inputName.replace(/\.[^/.]+$/, "");
-  const uploadDir = join(process.cwd(), "temp_uploads", Date.now().toString());
-  const outputDir = join(uploadDir, "output");
-  const inputPath = join(uploadDir, inputName);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let uploadDir: string | null = null;
+
       try {
-        await mkdir(uploadDir, { recursive: true });
-        await mkdir(outputDir, { recursive: true });
-
-        if (!USE_DUMMY) {
-          const bytes = await file.arrayBuffer();
-          const buffer = Buffer.from(bytes);
-          await writeFile(inputPath, buffer);
-        }
-
         if (USE_DUMMY) {
+          uploadDir = join(process.cwd(), "temp_uploads", Date.now().toString());
+          const outputDir = join(uploadDir, "output");
+          await mkdir(outputDir, { recursive: true });
+
           await runDummyConversion(outputDir, baseName);
           const totalPages = 5;
           for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
             sendSSE(controller, { type: "progress", currentPage, totalPages });
             await sleep(250);
           }
+
+          const zipPath = join(uploadDir, `${baseName}.zip`);
+          await createZip(outputDir, zipPath);
+          const zipBuffer = await readFile(zipPath);
+          const zipBase64 = zipBuffer.toString("base64");
+          sendSSE(controller, { type: "done", zipBase64 });
         } else {
-          await runServerConversion(inputPath, outputDir, baseName, (currentPage, totalPages) => {
+          uploadDir = join(process.cwd(), "temp_uploads", Date.now().toString());
+          await mkdir(uploadDir, { recursive: true });
+          const inputPath = join(uploadDir, inputName);
+          const outputDir = join(uploadDir, "output");
+          await mkdir(outputDir, { recursive: true });
+
+          const bytes = await file.arrayBuffer();
+          const buffer = Buffer.from(bytes);
+          await writeFile(inputPath, buffer);
+
+          const zipBase64 = await runServerConversion(inputPath, outputDir, baseName, (currentPage, totalPages) => {
             sendSSE(controller, { type: "progress", currentPage, totalPages });
           });
-        }
 
-        const outputPath = join(outputDir, `${baseName}.md`);
-        if (!existsSync(outputPath)) {
-          throw new Error(`Output file not found: ${outputPath}`);
+          sendSSE(controller, { type: "done", zipBase64 });
         }
-
-        const zipPath = join(uploadDir, `${baseName}.zip`);
-        await createZip(outputDir, zipPath);
-        const zipBuffer = await readFile(zipPath);
-        const zipBase64 = zipBuffer.toString("base64");
-        sendSSE(controller, { type: "done", zipBase64 });
       } catch (error) {
         console.error("Conversion error:", error);
         const message = error instanceof Error ? error.message : "Conversion failed";
         sendSSE(controller, { type: "error", message });
       } finally {
-        try {
-          await rm(uploadDir, { recursive: true, force: true });
-        } catch {}
+        if (uploadDir) {
+          try {
+            await rm(uploadDir, { recursive: true, force: true });
+          } catch {}
+        }
         controller.close();
       }
     },
