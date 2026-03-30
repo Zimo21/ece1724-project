@@ -9,3 +9,6 @@ safetensors
 transformers==4.45.2
 addict
 einops
+fastapi
+uvicorn
+python-multipart

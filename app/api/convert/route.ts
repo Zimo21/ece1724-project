@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { spawn } from "child_process";
 import { readFile, writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
+import { extname } from "path";
 import { existsSync } from "fs";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
 
-const USE_DUMMY = process.env.USE_DUMMY_MODEL === "true";
-const USE_VLLM  = process.env.USE_VLLM === "true";
-const pythonCmd = process.env.PYTHON_PATH || "python3";
+const USE_DUMMY = process.env.USE_DUMMY_MODEL?.toLowerCase() === "true";
+const OCR_SERVER_URL = process.env.OCR_SERVER_URL || "http://127.0.0.1:8000";
 
 const DUMMY_MARKDOWN = `# Sample Document
 
@@ -58,53 +57,80 @@ async function runDummyConversion(outputDir: string, baseName: string): Promise<
   await writeFile(join(outputDir, `${baseName}.md`), DUMMY_MARKDOWN);
 }
 
-function runRealConversion(
+async function runServerConversion(
   inputPath: string,
   outputDir: string,
+  baseName: string,
   onProgress: (currentPage: number, totalPages: number) => void
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const scriptPath = join(
-      process.cwd(),
-      USE_VLLM ? "run_ocr_vllm.py" : "run_dpsk_ocr2_torch.py"
-    );
-    const child = spawn(pythonCmd, [scriptPath, inputPath, "--output", outputDir], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+  const fileBuffer = await readFile(inputPath);
+  const formData = new FormData();
+  formData.append("file", new Blob([fileBuffer]), baseName + extname(inputPath));
 
-    let totalPages = 0;
-    let buffer = "";
+  const response = await fetch(`${OCR_SERVER_URL}/convert/stream`, {
+    method: "POST",
+    body: formData,
+  });
 
-    const onData = (chunk: Buffer) => {
-      buffer += chunk.toString();
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        const totalMatch = line.match(/^PROGRESS_TOTAL\s+(\d+)/);
-        if (totalMatch) {
-          totalPages = parseInt(totalMatch[1], 10);
-          onProgress(0, totalPages);
-          continue;
-        }
-        const currentMatch = line.match(/^PROGRESS_CURRENT\s+(\d+)/);
-        if (currentMatch && totalPages > 0) {
-          const currentPage = parseInt(currentMatch[1], 10);
-          onProgress(currentPage, totalPages);
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OCR server error: ${error}`);
+  }
+
+  if (!response.body) {
+    throw new Error("No response body from OCR server");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let markdown: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const payload = JSON.parse(line.slice(6));
+          if (payload.type === "progress" && payload.currentPage != null && payload.totalPages != null) {
+            onProgress(payload.currentPage, payload.totalPages);
+          } else if (payload.type === "done" && payload.markdown != null) {
+            markdown = payload.markdown;
+          } else if (payload.type === "error") {
+            throw new Error(payload.message || "OCR server error");
+          }
+        } catch {
+          // Ignore parse errors for non-JSON lines
         }
       }
-    };
+    }
+  }
 
-    child.stdout?.on("data", onData);
-    child.stderr?.on("data", (chunk) => {
-      process.stderr.write(chunk);
-    });
+  // Process any remaining data in buffer
+  if (buffer.startsWith("data: ")) {
+    try {
+      const payload = JSON.parse(buffer.slice(6));
+      if (payload.type === "done" && payload.markdown != null) {
+        markdown = payload.markdown;
+      } else if (payload.type === "error") {
+        throw new Error(payload.message || "OCR server error");
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
 
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Python script exited with code ${code}`));
-    });
-  });
+  if (markdown == null) {
+    throw new Error("No markdown received from OCR server");
+  }
+
+  await writeFile(join(outputDir, `${baseName}.md`), markdown);
 }
 
 export async function POST(request: Request) {
@@ -141,7 +167,7 @@ export async function POST(request: Request) {
             await sleep(250);
           }
         } else {
-          await runRealConversion(inputPath, outputDir, (currentPage, totalPages) => {
+          await runServerConversion(inputPath, outputDir, baseName, (currentPage, totalPages) => {
             sendSSE(controller, { type: "progress", currentPage, totalPages });
           });
         }

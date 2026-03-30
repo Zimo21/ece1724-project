@@ -1,0 +1,9 @@
+# vLLM-based OCR server requirements
+# Requires CUDA 12.8
+
+vllm==0.17.1
+pymupdf
+pillow
+fastapi
+uvicorn
+python-multipart

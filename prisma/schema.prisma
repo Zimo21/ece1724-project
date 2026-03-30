@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  historyFiles  HistoryFile[]  @relation("UserHistory")
+  filesOwned    SharedFile[]   @relation("OwnerFiles")
+  filesShared   SharedFile[]   @relation("SharedWithFiles")
+}
+
+model HistoryFile {
+  id          String   @id @default(cuid())
+  fileName    String
+  storagePath String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  user User @relation("UserHistory", fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model SharedFile {
+  id           String   @id @default(cuid())
+  fileName     String
+  storagePath  String
+  ownerId      String
+  sharedWithId String
+  createdAt    DateTime @default(now())
+
+  owner      User @relation("OwnerFiles", fields: [ownerId], references: [id])
+  sharedWith User @relation("SharedWithFiles", fields: [sharedWithId], references: [id])
+
+  @@index([ownerId])
+  @@index([sharedWithId])
+}

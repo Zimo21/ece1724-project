@@ -3,10 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2 } from "lucide-react";
+import { Upload, Download, Trash2, X } from "lucide-react";
 import { useAuth } from "./providers/AuthProvider";
 import { signOutUser } from "@/lib/auth/actions";
-import { HistoryDrawer, type HistoryItem } from "@/components/ui/history/historyDrawer";
+import { HistoryDrawer } from "@/components/ui/history/historyDrawer";
+import { SharedDrawer } from "@/components/ui/history/sharedDrawer";
+import { saveToHistory } from "@/lib/history/actions";
+import { shareFile } from "@/lib/history/shareActions";
 
 type Status = "idle" | "uploaded" | "converting" | "done";
 
@@ -25,11 +28,47 @@ type FileItem = {
 export default function Home() {
   const router = useRouter();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sharedOpen, setSharedOpen] = useState(false);
+  const [shareModal, setShareModal] = useState<{
+    open: boolean;
+    fileName: string;
+    storagePath: string;
+  } | null>(null);
+  const [shareEmail, setShareEmail] = useState("");
+  const [sharing, setSharing] = useState(false);
   const [fileList, setFileList] = useState<FileItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user, loading: authLoading } = useAuth();
+
+  const handleShare = (fileName: string, storagePath: string) => {
+    setShareModal({ open: true, fileName, storagePath });
+    setShareEmail("");
+  };
+
+  const handleShareSubmit = async () => {
+    if (!shareModal || !shareEmail.trim()) return;
+    setSharing(true);
+    try {
+      const result = await shareFile(
+        shareEmail.trim(),
+        shareModal.fileName,
+        shareModal.storagePath
+      );
+      if (result.success) {
+        alert("File shared successfully!");
+        setShareModal(null);
+      } else {
+        alert(result.error || "Failed to share file");
+      }
+    } catch (error) {
+      console.error("Share error:", error);
+      alert("Failed to share file");
+    } finally {
+      setSharing(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -85,16 +124,6 @@ export default function Home() {
 
     setFileList((prev) => [...prev, ...newItems]);
   };
-
-  // TEMP: stubbed data (later replace with Firestore query)
-  const historyItems: HistoryItem[] = [
-    {
-      id: "1",
-      fileName: "sample-output.zip",
-      createdAtLabel: "Mar 18, 2026 • 10:12 AM",
-      zipUrl: "https://example.com/sample-output.zip",
-    },
-  ];
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -248,6 +277,9 @@ export default function Home() {
           const blob = new Blob([bytes], { type: "application/zip" });
           const url = URL.createObjectURL(blob);
 
+          saveToHistory(user.uid, item.name.replace(/\.[^/.]+$/, "") + ".zip", blob)
+            .catch(console.error);
+
           setFileList((prev) =>
             prev.map((i) =>
               i.id === item.id
@@ -289,8 +321,45 @@ export default function Home() {
       <HistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
-        items={historyItems}
+        onShare={handleShare}
       />
+      <SharedDrawer open={sharedOpen} onClose={() => setSharedOpen(false)} />
+
+      {/* Share Modal */}
+      {shareModal?.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20">
+          <div className="bg-white border border-black p-4 w-[320px]">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Share File</h3>
+              <Button
+                variant="ghost"
+                className="h-8 px-2"
+                onClick={() => setShareModal(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="text-xs mb-2 truncate" title={shareModal.fileName}>
+              {shareModal.fileName}
+            </div>
+            <input
+              type="email"
+              placeholder="Recipient's email"
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+              className="w-full border border-black p-2 text-sm mb-3"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShareModal(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleShareSubmit} disabled={sharing || !shareEmail.trim()}>
+                {sharing ? "Sharing..." : "Share"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full max-w-3xl border border-black bg-white p-6">
         {/* Header */}
@@ -308,6 +377,9 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => setHistoryOpen(true)}>
                 History
+              </Button>
+              <Button variant="outline" onClick={() => setSharedOpen(true)}>
+                Shared with me
               </Button>
               <Button variant="outline" onClick={() => signOutUser()}>
                 Sign out
