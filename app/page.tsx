@@ -22,11 +22,20 @@ type FileItem = {
   error?: string;
 };
 
+type HistoryApiItem = {
+  id: string;
+  fileName: string;
+  downloadUrl: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
 export default function Home() {
   const router = useRouter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [fileList, setFileList] = useState<FileItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user, loading: authLoading } = useAuth();
@@ -34,6 +43,45 @@ export default function Home() {
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
+
+  useEffect(() => {
+    async function loadHistory() {
+      if (!user) return;
+
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/files", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) return;
+
+        const data = (await res.json()) as HistoryApiItem[];
+        const formatter = new Intl.DateTimeFormat(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+
+        const mapped: HistoryItem[] = data.map((item) => ({
+          id: item.id,
+          fileName: item.fileName,
+          createdAtLabel: formatter.format(new Date(item.createdAt)),
+          zipUrl: item.downloadUrl,
+        }));
+
+        setHistoryItems(mapped);
+      } catch (err) {
+        console.error("Failed to load history", err);
+      }
+    }
+
+    loadHistory();
+  }, [user]);
 
   if (authLoading || !user) {
     return (
@@ -85,16 +133,6 @@ export default function Home() {
 
     setFileList((prev) => [...prev, ...newItems]);
   };
-
-  // TEMP: stubbed data (later replace with Firestore query)
-  const historyItems: HistoryItem[] = [
-    {
-      id: "1",
-      fileName: "sample-output.zip",
-      createdAtLabel: "Mar 18, 2026 • 10:12 AM",
-      zipUrl: "https://example.com/sample-output.zip",
-    },
-  ];
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -164,8 +202,12 @@ export default function Home() {
         const formData = new FormData();
         formData.append("file", item.file);
 
+        const token = await user.getIdToken();
         const response = await fetch("/api/convert", {
           method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
           body: formData,
         });
 
@@ -179,7 +221,7 @@ export default function Home() {
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let zipBase64: string | null = null;
+        let downloadUrl: string | null = null;
         let errorMessage: string | null = null;
 
         const processSseBuffer = (chunkText: string) => {
@@ -197,7 +239,8 @@ export default function Home() {
                 type: string;
                 currentPage?: number;
                 totalPages?: number;
-                zipBase64?: string;
+                downloadUrl?: string;
+                expiresAt?: number;
                 message?: string;
               };
 
@@ -217,8 +260,8 @@ export default function Home() {
                       : i
                   )
                 );
-              } else if (payload.type === "done" && payload.zipBase64) {
-                zipBase64 = payload.zipBase64;
+              } else if (payload.type === "done" && payload.downloadUrl) {
+                downloadUrl = payload.downloadUrl;
               } else if (payload.type === "error" && payload.message) {
                 errorMessage = payload.message;
               }
@@ -239,22 +282,14 @@ export default function Home() {
 
         if (errorMessage) throw new Error(errorMessage);
 
-        if (zipBase64) {
-          const binary = atob(zipBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: "application/zip" });
-          const url = URL.createObjectURL(blob);
-
+        if (downloadUrl) {
           setFileList((prev) =>
             prev.map((i) =>
               i.id === item.id
                 ? {
                     ...i,
                     status: "done" as Status,
-                    downloadUrl: url,
+                    downloadUrl,
                     selected: false,
                   }
                 : i
