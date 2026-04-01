@@ -5,9 +5,11 @@ import { join } from "path";
 import { existsSync } from "fs";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
+import { v4 as uuidv4 } from "uuid";
+import { adminAuth, adminDb, adminStorage } from "@/lib/firebase/admin";
 
 const USE_DUMMY = process.env.USE_DUMMY_MODEL === "true";
-const USE_VLLM  = process.env.USE_VLLM === "true";
+const USE_VLLM = process.env.USE_VLLM === "true";
 const pythonCmd = process.env.PYTHON_PATH || "python3";
 
 const DUMMY_MARKDOWN = `# Sample Document
@@ -31,7 +33,14 @@ def hello():
 
 function sendSSE(
   controller: ReadableStreamDefaultController<Uint8Array>,
-  obj: { type: string; currentPage?: number; totalPages?: number; zipBase64?: string; message?: string }
+  obj: {
+    type: string;
+    currentPage?: number;
+    totalPages?: number;
+    downloadUrl?: string;
+    expiresAt?: number;
+    message?: string;
+  }
 ) {
   controller.enqueue(new TextEncoder().encode("data: " + JSON.stringify(obj) + "\n\n"));
 }
@@ -108,6 +117,20 @@ function runRealConversion(
 }
 
 export async function POST(request: Request) {
+  const authHeader = request.headers.get("authorization") ?? "";
+  const match = authHeader.match(/^Bearer (.+)$/);
+  if (!match) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let userId: string;
+  try {
+    const decoded = await adminAuth.verifyIdToken(match[1]);
+    userId = decoded.uid;
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
 
@@ -153,9 +176,33 @@ export async function POST(request: Request) {
 
         const zipPath = join(uploadDir, `${baseName}.zip`);
         await createZip(outputDir, zipPath);
+
         const zipBuffer = await readFile(zipPath);
-        const zipBase64 = zipBuffer.toString("base64");
-        sendSSE(controller, { type: "done", zipBase64 });
+
+        const fileId = uuidv4();
+        const objectPath = `zips/${fileId}.zip`;
+        const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+        await adminStorage.file(objectPath).save(zipBuffer, {
+          contentType: "application/zip",
+        });
+
+        const [downloadUrl] = await adminStorage.file(objectPath).getSignedUrl({
+          action: "read",
+          expires: expiresAt,
+        });
+
+        await adminDb.collection("zipFiles").doc(fileId).set({
+          userId,
+          fileName: `${baseName}.zip`,
+          originalFileName: inputName,
+          objectPath,
+          createdAt: new Date(),
+          expiresAt: new Date(expiresAt),
+          downloadUrl,
+        });
+
+        sendSSE(controller, { type: "done", downloadUrl, expiresAt });
       } catch (error) {
         console.error("Conversion error:", error);
         const message = error instanceof Error ? error.message : "Conversion failed";
