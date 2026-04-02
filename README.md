@@ -5,8 +5,8 @@
 ## Team Information
 
 - Name: Tanvi Patil
-Student Number: XXX  
-Email: XXX  
+Student Number: 1011076096  
+Email: [tanvi.patil@mail.utoronto.ca](mailto:tanvi.patil@mail.utoronto.ca)  
 - Name: Chen Hao Zhang
 Student Number: XXX  
 Email: XXX  
@@ -353,7 +353,7 @@ to be completed after completing ai-session.md
 
 ## Individual Contributions
 
-to be completed at end of implementation
+Tanvi Patil - Implemented Authentication, Participated in peer reviews and system design, Implemented Firebase and Firestore deployments, Implemented UX Design
 
 ---
 
