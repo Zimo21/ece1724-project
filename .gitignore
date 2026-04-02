@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 
 temp_uploads/
 *.pdf
+
+# Prisma generated client
+generated/
