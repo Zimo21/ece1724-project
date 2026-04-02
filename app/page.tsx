@@ -57,7 +57,6 @@ export default function Home() {
         shareModal.storagePath
       );
       if (result.success) {
-        alert("File shared successfully!");
         setShareModal(null);
       } else {
         alert(result.error || "Failed to share file");

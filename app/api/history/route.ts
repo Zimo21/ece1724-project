@@ -33,6 +33,15 @@ export async function POST(request: NextRequest) {
 
     const decoded = await auth.verifyIdToken(token);
     const userId = decoded.uid;
+    const userEmail = decoded.email;
+
+    if (userEmail) {
+      await prisma.user.upsert({
+        where: { id: userId },
+        create: { id: userId, email: userEmail },
+        update: { email: userEmail },
+      });
+    }
 
     const body = await request.json();
     const { fileName, storagePath } = body;
