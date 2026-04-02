@@ -160,16 +160,20 @@ In addition, the application supports batch processing, allowing multiple docume
 - **Sign in with Google** — one-click sign-in.
 - Or use **email** and **password** in the form, then submit to sign in.
 - Link to **sign up** if you need a new account.
+![Login page](docs/screenshot/login.png)
 
 ### Sign up page (`/signup`)
 
 - Create an account with **email and password** (and any fields shown on that page).
 - After sign-up, you are usually redirected to sign in or straight to the app, depending on configuration.
+![Signup page](docs/screenshot/signUp.png)
 
 ### Home — main converter (`/`)
 
-After you are signed in, you see the **DeepSeek OCR** screen. Main areas, top to bottom:
+After you are signed in, you see the **DeepSeek OCR** screen. 
+![Home page](docs/screenshot/upload.png)
 
+Main areas, top to bottom:
 1. **Header / top bar**
    - **History** — opens a side panel listing your past completed downloads.
    - **Shared with me** — opens a side panel showing files others have shared with you.
@@ -179,6 +183,7 @@ After you are signed in, you see the **DeepSeek OCR** screen. Main areas, top to
   - You can also **drag files** onto the box.  
   - Multiple files are allowed; each file becomes one row in the list below.
 3. **File list (job queue)**
+![File queue](docs/screenshot/queue.png)
   Each row shows:
   - **Checkbox** — check the files you want to convert; unchecked files are skipped when you press Convert.  
   - **File name** and a small **status** label (e.g. ready, converting, done, error).  
@@ -189,17 +194,39 @@ After you are signed in, you see the **DeepSeek OCR** screen. Main areas, top to
   - **Upload** — same as opening the file picker (duplicate shortcut).  
   - **Convert** — starts conversion for all **checked** rows, **one file after another**. It is disabled if nothing is checked.
 
+### Processing
+
+- After clicking **Convert**, the selected files are processed **sequentially** (one by one).
+- Each file shows a **status update** (e.g., converting, done, or error).
+- During processing, a **progress bar** is displayed along with page-level progress such as **Page X of Y**.
+- Users can monitor the progress in real time without refreshing the page.
+- Once a file is completed, it becomes available for **download as a ZIP file**.
+
+![Processing](docs/screenshot/processing.png)
+
 ### History panel
 
 - Open it from the **History** control on the home page.  
 - You see a list of **previous ZIP downloads** (name and time). Tap an entry to open/download if it is still available.
+![History](docs/screenshot/history.png)
+
+### Share feature
+- From the **History panel**, users can click the **Share** button on a completed file.
+- A dialog will appear allowing the user to enter another user's **email address**.
+- After confirming, the file is shared and becomes visible to the recipient.
+
+![Share](docs/screenshot/shareConvertedFile.png)
+
+- Users can open the **Shared with me** panel from the top bar.
+- This panel lists files that have been shared with the current user.
+- Each shared file includes metadata (owner and timestamp) and can be directly **downloaded**.
+
+![Shared](docs/screenshot/sharedWithMe.png)
 
 ### Tips
 
 - Supported types for upload: **PDF**, **PNG**, **JPEG**, **WEBP**. Other types may be skipped with a browser alert.  
 - If the app shows **Redirecting…**, wait until you are logged in or sent to login.
-
-*(add screenshots of login, home queue + progress, history panel, and download for the report or demo video.)*
 
 ---
 
