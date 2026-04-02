@@ -316,7 +316,14 @@ export default function Home() {
   const hasFiles = fileList.length > 0;
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 bg-white text-black">
+    <main className="relative isolate min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#eef2ff,_white_60%)] text-neutral-900">
+
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <div className="absolute -top-24 right-8 h-72 w-72 rounded-full bg-gradient-to-br from-indigo-300 via-purple-300 to-pink-300 opacity-70 blur-3xl" />
+        <div className="absolute bottom-8 left-8 h-80 w-80 rounded-full bg-gradient-to-br from-teal-200 via-cyan-300 to-blue-300 opacity-70 blur-3xl" />
+        <div className="absolute top-32 left-1/2 h-48 w-48 -translate-x-1/2 rounded-3xl bg-gradient-to-br from-pink-300 to-orange-300 opacity-80 blur-2xl" />
+      </div>
+
       <HistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -324,213 +331,191 @@ export default function Home() {
       />
       <SharedDrawer open={sharedOpen} onClose={() => setSharedOpen(false)} />
 
-      {/* Share Modal */}
-      {shareModal?.open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20">
-          <div className="bg-white border border-black p-4 w-[320px]">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold">Share File</h3>
-              <Button
-                variant="ghost"
-                className="h-8 px-2"
-                onClick={() => setShareModal(null)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="text-xs mb-2 truncate" title={shareModal.fileName}>
-              {shareModal.fileName}
-            </div>
-            <input
-              type="email"
-              placeholder="Recipient's email"
-              value={shareEmail}
-              onChange={(e) => setShareEmail(e.target.value)}
-              className="w-full border border-black p-2 text-sm mb-3"
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShareModal(null)}>
-                Cancel
-              </Button>
-              <Button onClick={handleShareSubmit} disabled={sharing || !shareEmail.trim()}>
-                {sharing ? "Sharing..." : "Share"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="w-full max-w-3xl border border-black bg-white p-6">
-        {/* Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">DeepSeek OCR</h1>
-            <p className="text-sm">Convert PDF or images to Markdown</p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:items-end">
-            <div className="text-sm">
-              Signed in as{" "}
-              <span className="font-medium">{user.email ?? user.uid}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setHistoryOpen(true)}>
-                History
-              </Button>
-              <Button variant="outline" onClick={() => setSharedOpen(true)}>
-                Shared with me
-              </Button>
-              <Button variant="outline" onClick={() => signOutUser()}>
-                Sign out
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Upload box */}
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onClick={handleUploadClick}
-          className="mt-6 border border-black p-6 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <Upload className="h-5 w-5" />
+      <div className="relative z-10 min-h-screen w-full px-6 py-10 flex items-center justify-center">
+        <div className="w-full max-w-5xl rounded-3xl border border-neutral-200 bg-white/90 p-6 shadow-lg backdrop-blur">
+      
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="text-sm font-medium">
-                Drag and drop files here, or click to select
-              </div>
-              <div className="text-xs">Supports PDF, PNG, JPG, WEBP</div>
-            </div>
-          </div>
-          {isDragging && <div className="mt-3 text-sm">Drop to add files…</div>}
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.png,.jpg,.jpeg,.webp"
-          multiple
-          onChange={handleInputChange}
-          className="hidden"
-        />
-
-        {/* File list */}
-        {hasFiles && (
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium">Files</div>
-              <div className="text-sm">
-                {hasSelected
-                  ? `${fileList.filter((i) => i.selected).length} selected`
-                  : "Select file(s) to convert"}
-              </div>
+              <h1 className="text-2xl font-semibold">DeepSeek OCR</h1>
+              <p className="text-sm text-neutral-500">
+                Convert PDF or images to Markdown
+              </p>
             </div>
 
-            <ul className="border border-black">
-              {fileList.map((item, idx) => (
-                <li
-                  key={item.id}
-                  className={`p-3 flex items-start gap-3 ${
-                    idx !== fileList.length - 1 ? "border-b border-black" : ""
-                  }`}
-                >
-                  {item.status === "done" ? (
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="border border-black px-2 py-1"
-                      title="Remove"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <input
-                      type="checkbox"
-                      checked={item.selected}
-                      onChange={(e) =>
-                        setItemSelected(item.id, e.target.checked)
-                      }
-                      disabled={item.status === "converting"}
-                      className="mt-1"
-                    />
-                  )}
-
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium break-all">
-                      {item.name}
-                    </div>
-                    <div className="text-sm">Status: {getStatusLabel(item)}</div>
-
-                    {item.status === "converting" && (
-                      <div className="mt-2">
-                        {/* Progress bar (black/white) */}
-                        <div className="h-2 w-full border border-black">
-                          <div
-                            className="h-full bg-black"
-                            style={{
-                              width:
-                                item.totalPages > 0
-                                  ? `${Math.max(
-                                      1,
-                                      (item.currentPage / item.totalPages) * 100
-                                    )}%`
-                                  : "0%",
-                            }}
-                          />
-                        </div>
-
-                        <div className="mt-1 text-sm">
-                          {item.totalPages > 0
-                            ? `Page ${item.currentPage} of ${item.totalPages}`
-                            : "Starting…"}
-                        </div>
-                      </div>
-                    )}
-
-                    {item.error && (
-                      <div className="mt-2 text-sm">Error: {item.error}</div>
-                    )}
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (item.downloadUrl)
-                        window.open(item.downloadUrl, "_blank");
-                    }}
-                    disabled={!item.downloadUrl}
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col gap-2 sm:items-end">
+              <div className="text-sm text-neutral-600">
+                Signed in as{" "}
+                <span className="font-medium text-neutral-900">
+                  {user.email ?? user.uid}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+                  History
+                </Button>
+                <Button variant="outline" onClick={() => setSharedOpen(true)}>
+                  Shared with me
+                </Button>
+                <Button variant="outline" onClick={() => signOutUser()}>
+                  Sign out
+                </Button>
+              </div>
+            </div>
           </div>
-        )}
 
-        {/* Actions */}
-        <div className="mt-6 flex gap-3">
-          <Button variant="outline" onClick={handleUploadClick}>
-            Upload
-          </Button>
-
-          <Button
-            variant="default"
-            disabled={!hasSelected}
-            onClick={handleConvert}
+     
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={handleUploadClick}
+            className={`mt-6 rounded-2xl border-2 border-dashed p-6 transition ${
+              isDragging
+                ? "border-indigo-400 bg-indigo-50"
+                : "border-neutral-200 bg-neutral-50"
+            } cursor-pointer`}
           >
-            Convert
-          </Button>
-        </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-white p-2 shadow-sm">
+                <Upload className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-sm font-medium">
+                  Drag and drop files here, or click to select
+                </div>
+                <div className="text-xs text-neutral-500">
+                  Supports PDF, PNG, JPG, WEBP
+                </div>
+              </div>
+            </div>
+            {isDragging && (
+              <div className="mt-3 text-sm text-indigo-600">
+                Drop to add files…
+              </div>
+            )}
+          </div>
 
-        <div className="mt-4 text-sm">
-          {!hasFiles
-            ? "No file uploaded"
-            : hasSelected
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp"
+            multiple
+            onChange={handleInputChange}
+            className="hidden"
+          />
+
+      
+          {hasFiles && (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium">Files</div>
+                <div className="text-sm text-neutral-500">
+                  {hasSelected
+                    ? `${fileList.filter((i) => i.selected).length} selected`
+                    : "Select file(s) to convert"}
+                </div>
+              </div>
+
+              <ul className="divide-y divide-neutral-200 rounded-2xl border border-neutral-200 bg-white">
+                {fileList.map((item) => (
+                  <li key={item.id} className="p-4 flex items-start gap-3">
+                    {item.status === "done" ? (
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className="rounded-lg border border-neutral-200 bg-white p-2 hover:bg-neutral-50"
+                        title="Remove"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={(e) =>
+                          setItemSelected(item.id, e.target.checked)
+                        }
+                        disabled={item.status === "converting"}
+                        className="mt-1 h-4 w-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium break-all">
+                        {item.name}
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        Status: {getStatusLabel(item)}
+                      </div>
+
+                      {item.status === "converting" && (
+                        <div className="mt-2">
+                          <div className="h-2 w-full rounded-full bg-neutral-100">
+                            <div
+                              className="h-full rounded-full bg-indigo-600"
+                              style={{
+                                width:
+                                  item.totalPages > 0
+                                    ? `${Math.max(
+                                        1,
+                                        (item.currentPage / item.totalPages) * 100
+                                      )}%`
+                                    : "0%",
+                              }}
+                            />
+                          </div>
+                          <div className="mt-1 text-xs text-neutral-500">
+                            {item.totalPages > 0
+                              ? `Page ${item.currentPage} of ${item.totalPages}`
+                              : "Starting…"}
+                          </div>
+                        </div>
+                      )}
+
+                      {item.error && (
+                        <div className="mt-2 text-xs text-red-600">
+                          Error: {item.error}
+                        </div>
+                      )}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (item.downloadUrl)
+                          window.open(item.downloadUrl, "_blank");
+                      }}
+                      disabled={!item.downloadUrl}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button variant="outline" onClick={handleUploadClick}>
+              Upload
+            </Button>
+            <Button
+              variant="default"
+              disabled={!hasSelected}
+              onClick={handleConvert}
+            >
+              Convert
+            </Button>
+          </div>
+
+          <div className="mt-4 text-sm text-neutral-500">
+            {!hasFiles
+              ? "No file uploaded"
+              : hasSelected
               ? `${fileList.filter((i) => i.selected).length} file(s) selected — click Convert`
               : "Select one or more files to convert"}
+          </div>
         </div>
       </div>
     </main>
