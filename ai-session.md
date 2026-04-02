@@ -8,33 +8,36 @@ Our Next.js App Router route `POST /api/convert` uses `child_process.spawn` to r
 
 ### AI Response (trimmed)
 
-The AI described returning `Content-Type: text/event-stream` with a `ReadableStream`, enqueueing `data:`  + JSON + `\n\n` for each progress tick, and on the client reading the stream with `TextDecoder` instead of `EventSource`. It noted splitting incoming bytes on **double newlines** to recover whole SSE events and handling **incomplete** trailing buffers between reads.
+The AI described returning `Content-Type: text/event-stream` with a `ReadableStream`, enqueueing `data:` + JSON + `\n\n` for each progress tick, and on the client reading the stream with `TextDecoder` instead of `EventSource`. It noted splitting incoming bytes on **double newlines** to recover whole SSE events and handling **incomplete** trailing buffers between reads.
 
 ### What Your Team Did With It
 
 - We implemented **stdout line buffering** in Node: split on `\n`, keep a carry buffer for incomplete lines, and regex-match `PROGRESS_TOTAL` / `PROGRESS_CURRENT` to call a callback that enqueues SSE `progress` events.
-- We kept `**fetch` + `ReadableStream`** on the client (not `EventSource`) because of **POST + FormData + Bearer auth**; we split SSE frames with `/\r?\n\r?\n/` and extracted the `data: …` line so `\r\n` from the runtime did not break parsing.
+- We kept `**fetch` + `ReadableStream`** on the client (not `EventSource`) because of **POST + FormData + Bearer auth\*\*; we split SSE frames with `/\r?\n\r?\n/` and extracted the `data: …` line so `\r\n` from the runtime did not break parsing.
 - After integration, we still had to **tune** the parser when events arrived in small TCP chunks; the AI’s “buffer until `\n\n`” idea was necessary but not sufficient until we tested against real `fetch` streaming behavior in Chrome.
 
-To be completed Session 2 & 3
+To be completed Session 3
 
-## Session 2 (e.g., Diagnosing unexpected UI behavior)
+## Session 2: Integrating History Drawer in UI and In UI even though the background gradient was visible card wasn't needed help in debugging
 
 ### Prompt (you sent to AI)
 
-<copy/paste>
+My App is currently showing just the background gradient, not the card also the History Drawer is invisible.
 
 ### AI Response (trimmed if long)
 
-<copy/paste or summary>
+Correct the stacking order (z-index) and remove the empty overlay that is sitting on top of your card.
+
+What is wrong:
+The gradient container is absolute and ended up covering the card.
+There is an extra empty wrapper that created a full‑screen layer.
+The card didn’t have a higher z-index, so it was hidden.
 
 ### What Your Team Did With It
 
-1-3 bullet points describing:
-
-- What was useful
-- What was incorrect, misleading, or not applicable to your project
-- How your team verified, modified, or replaced the suggestion
+- We changed made the recommended code changes.
+- Implemented the History changes
+- We tried with a few alignments suggested by AI
 
 ## Session 3 (e.g., Diagnosing unexpected UI behavior)
 
@@ -53,4 +56,3 @@ To be completed Session 2 & 3
 - What was useful
 - What was incorrect, misleading, or not applicable to your project
 - How your team verified, modified, or replaced the suggestion
-
