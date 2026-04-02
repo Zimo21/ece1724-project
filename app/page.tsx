@@ -3,10 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2 } from "lucide-react";
+import { Upload, Download, Trash2, X } from "lucide-react";
 import { useAuth } from "./providers/AuthProvider";
 import { signOutUser } from "@/lib/auth/actions";
-import { HistoryDrawer, type HistoryItem } from "@/components/ui/history/historyDrawer";
+import { HistoryDrawer } from "@/components/ui/history/historyDrawer";
+import { SharedDrawer } from "@/components/ui/history/sharedDrawer";
+import { saveToHistory } from "@/lib/history/actions";
+import { shareFile } from "@/lib/history/shareActions";
 
 type Status = "idle" | "uploaded" | "converting" | "done";
 
@@ -22,66 +25,53 @@ type FileItem = {
   error?: string;
 };
 
-type HistoryApiItem = {
-  id: string;
-  fileName: string;
-  downloadUrl: string;
-  createdAt: string;
-  expiresAt: string;
-};
-
 export default function Home() {
   const router = useRouter();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sharedOpen, setSharedOpen] = useState(false);
+  const [shareModal, setShareModal] = useState<{
+    open: boolean;
+    fileName: string;
+    storagePath: string;
+  } | null>(null);
+  const [shareEmail, setShareEmail] = useState("");
+  const [sharing, setSharing] = useState(false);
   const [fileList, setFileList] = useState<FileItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user, loading: authLoading } = useAuth();
 
+  const handleShare = (fileName: string, storagePath: string) => {
+    setShareModal({ open: true, fileName, storagePath });
+    setShareEmail("");
+  };
+
+  const handleShareSubmit = async () => {
+    if (!shareModal || !shareEmail.trim()) return;
+    setSharing(true);
+    try {
+      const result = await shareFile(
+        shareEmail.trim(),
+        shareModal.fileName,
+        shareModal.storagePath
+      );
+      if (result.success) {
+        setShareModal(null);
+      } else {
+        alert(result.error || "Failed to share file");
+      }
+    } catch (error) {
+      console.error("Share error:", error);
+      alert("Failed to share file");
+    } finally {
+      setSharing(false);
+    }
+  };
+
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
-
-  useEffect(() => {
-    async function loadHistory() {
-      if (!user) return;
-
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch("/api/files", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!res.ok) return;
-
-        const data = (await res.json()) as HistoryApiItem[];
-        const formatter = new Intl.DateTimeFormat(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "2-digit",
-          hour: "numeric",
-          minute: "2-digit",
-        });
-
-        const mapped: HistoryItem[] = data.map((item) => ({
-          id: item.id,
-          fileName: item.fileName,
-          createdAtLabel: formatter.format(new Date(item.createdAt)),
-          zipUrl: item.downloadUrl,
-        }));
-
-        setHistoryItems(mapped);
-      } catch (err) {
-        console.error("Failed to load history", err);
-      }
-    }
-
-    loadHistory();
-  }, [user]);
 
   if (authLoading || !user) {
     return (
@@ -202,12 +192,8 @@ export default function Home() {
         const formData = new FormData();
         formData.append("file", item.file);
 
-        const token = await user.getIdToken();
         const response = await fetch("/api/convert", {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
           body: formData,
         });
 
@@ -221,7 +207,7 @@ export default function Home() {
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let downloadUrl: string | null = null;
+        let zipBase64: string | null = null;
         let errorMessage: string | null = null;
 
         const processSseBuffer = (chunkText: string) => {
@@ -239,8 +225,7 @@ export default function Home() {
                 type: string;
                 currentPage?: number;
                 totalPages?: number;
-                downloadUrl?: string;
-                expiresAt?: number;
+                zipBase64?: string;
                 message?: string;
               };
 
@@ -260,8 +245,8 @@ export default function Home() {
                       : i
                   )
                 );
-              } else if (payload.type === "done" && payload.downloadUrl) {
-                downloadUrl = payload.downloadUrl;
+              } else if (payload.type === "done" && payload.zipBase64) {
+                zipBase64 = payload.zipBase64;
               } else if (payload.type === "error" && payload.message) {
                 errorMessage = payload.message;
               }
@@ -282,14 +267,25 @@ export default function Home() {
 
         if (errorMessage) throw new Error(errorMessage);
 
-        if (downloadUrl) {
+        if (zipBase64) {
+          const binary = atob(zipBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: "application/zip" });
+          const url = URL.createObjectURL(blob);
+
+          saveToHistory(user.uid, item.name.replace(/\.[^/.]+$/, "") + ".zip", blob)
+            .catch(console.error);
+
           setFileList((prev) =>
             prev.map((i) =>
               i.id === item.id
                 ? {
                     ...i,
                     status: "done" as Status,
-                    downloadUrl,
+                    downloadUrl: url,
                     selected: false,
                   }
                 : i
@@ -324,8 +320,45 @@ export default function Home() {
       <HistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
-        items={historyItems}
+        onShare={handleShare}
       />
+      <SharedDrawer open={sharedOpen} onClose={() => setSharedOpen(false)} />
+
+      {/* Share Modal */}
+      {shareModal?.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20">
+          <div className="bg-white border border-black p-4 w-[320px]">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Share File</h3>
+              <Button
+                variant="ghost"
+                className="h-8 px-2"
+                onClick={() => setShareModal(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="text-xs mb-2 truncate" title={shareModal.fileName}>
+              {shareModal.fileName}
+            </div>
+            <input
+              type="email"
+              placeholder="Recipient's email"
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+              className="w-full border border-black p-2 text-sm mb-3"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShareModal(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleShareSubmit} disabled={sharing || !shareEmail.trim()}>
+                {sharing ? "Sharing..." : "Share"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full max-w-3xl border border-black bg-white p-6">
         {/* Header */}
@@ -343,6 +376,9 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => setHistoryOpen(true)}>
                 History
+              </Button>
+              <Button variant="outline" onClick={() => setSharedOpen(true)}>
+                Shared with me
               </Button>
               <Button variant="outline" onClick={() => signOutUser()}>
                 Sign out

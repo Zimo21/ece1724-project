@@ -17,9 +17,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(firebaseAuth, (u) => {
+    const unsub = onAuthStateChanged(firebaseAuth, async (u) => {
       setUser(u);
       setLoading(false);
+
+      if (u) {
+        try {
+          const token = await u.getIdToken();
+          await fetch("/api/user", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        } catch {
+          // Ignore errors - user creation is optional
+        }
+      }
     });
     return () => unsub();
   }, []);

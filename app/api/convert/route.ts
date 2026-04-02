@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
-import { spawn } from "child_process";
 import { readFile, writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
-import { existsSync } from "fs";
+import { extname } from "path";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
-import { v4 as uuidv4 } from "uuid";
-import { adminAuth, adminDb, adminStorage } from "@/lib/firebase/admin";
 
-const USE_DUMMY = process.env.USE_DUMMY_MODEL === "true";
-const USE_VLLM = process.env.USE_VLLM === "true";
-const pythonCmd = process.env.PYTHON_PATH || "python3";
+const USE_DUMMY = process.env.USE_DUMMY_MODEL?.toLowerCase() === "true";
+const OCR_SERVER_URL = process.env.OCR_SERVER_URL || "http://127.0.0.1:8000";
 
 const DUMMY_MARKDOWN = `# Sample Document
 
@@ -33,14 +29,7 @@ def hello():
 
 function sendSSE(
   controller: ReadableStreamDefaultController<Uint8Array>,
-  obj: {
-    type: string;
-    currentPage?: number;
-    totalPages?: number;
-    downloadUrl?: string;
-    expiresAt?: number;
-    message?: string;
-  }
+  obj: { type: string; currentPage?: number; totalPages?: number; zipBase64?: string; message?: string }
 ) {
   controller.enqueue(new TextEncoder().encode("data: " + JSON.stringify(obj) + "\n\n"));
 }
@@ -67,70 +56,86 @@ async function runDummyConversion(outputDir: string, baseName: string): Promise<
   await writeFile(join(outputDir, `${baseName}.md`), DUMMY_MARKDOWN);
 }
 
-function runRealConversion(
+async function runServerConversion(
   inputPath: string,
   outputDir: string,
+  baseName: string,
   onProgress: (currentPage: number, totalPages: number) => void
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const scriptPath = join(
-      process.cwd(),
-      USE_VLLM ? "run_ocr_vllm.py" : "run_dpsk_ocr2_torch.py"
-    );
-    const child = spawn(pythonCmd, [scriptPath, inputPath, "--output", outputDir], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+): Promise<string> {
+  const fileBuffer = await readFile(inputPath);
+  const formData = new FormData();
+  formData.append("file", new Blob([fileBuffer]), baseName + extname(inputPath));
 
-    let totalPages = 0;
-    let buffer = "";
+  const response = await fetch(`${OCR_SERVER_URL}/convert/stream`, {
+    method: "POST",
+    body: formData,
+  });
 
-    const onData = (chunk: Buffer) => {
-      buffer += chunk.toString();
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        const totalMatch = line.match(/^PROGRESS_TOTAL\s+(\d+)/);
-        if (totalMatch) {
-          totalPages = parseInt(totalMatch[1], 10);
-          onProgress(0, totalPages);
-          continue;
-        }
-        const currentMatch = line.match(/^PROGRESS_CURRENT\s+(\d+)/);
-        if (currentMatch && totalPages > 0) {
-          const currentPage = parseInt(currentMatch[1], 10);
-          onProgress(currentPage, totalPages);
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OCR server error: ${error}`);
+  }
+
+  if (!response.body) {
+    throw new Error("No response body from OCR server");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let zipBase64: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const payload = JSON.parse(line.slice(6));
+          if (payload.type === "progress" && payload.currentPage != null && payload.totalPages != null) {
+            onProgress(payload.currentPage, payload.totalPages);
+          } else if (payload.type === "done" && payload.zipBase64 != null) {
+            zipBase64 = payload.zipBase64;
+          } else if (payload.type === "error") {
+            throw new Error(payload.message || "OCR server error");
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== "OCR server error" && !e.message.startsWith("OCR server error")) {
+            throw e;
+          }
         }
       }
-    };
+    }
+  }
 
-    child.stdout?.on("data", onData);
-    child.stderr?.on("data", (chunk) => {
-      process.stderr.write(chunk);
-    });
+  if (buffer.startsWith("data: ")) {
+    try {
+      const payload = JSON.parse(buffer.slice(6));
+      if (payload.type === "done" && payload.zipBase64 != null) {
+        zipBase64 = payload.zipBase64;
+      } else if (payload.type === "error") {
+        throw new Error(payload.message || "OCR server error");
+      }
+    } catch (e) {
+      if (e instanceof Error && !e.message.includes("OCR server error")) {
+        throw e;
+      }
+    }
+  }
 
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Python script exited with code ${code}`));
-    });
-  });
+  if (zipBase64 == null) {
+    throw new Error("No zip received from OCR server");
+  }
+
+  return zipBase64;
 }
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const match = authHeader.match(/^Bearer (.+)$/);
-  if (!match) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let userId: string;
-  try {
-    const decoded = await adminAuth.verifyIdToken(match[1]);
-    userId = decoded.uid;
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
 
@@ -140,77 +145,56 @@ export async function POST(request: Request) {
 
   const inputName = file.name;
   const baseName = inputName.replace(/\.[^/.]+$/, "");
-  const uploadDir = join(process.cwd(), "temp_uploads", Date.now().toString());
-  const outputDir = join(uploadDir, "output");
-  const inputPath = join(uploadDir, inputName);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let uploadDir: string | null = null;
+
       try {
-        await mkdir(uploadDir, { recursive: true });
-        await mkdir(outputDir, { recursive: true });
-
-        if (!USE_DUMMY) {
-          const bytes = await file.arrayBuffer();
-          const buffer = Buffer.from(bytes);
-          await writeFile(inputPath, buffer);
-        }
-
         if (USE_DUMMY) {
+          uploadDir = join(process.cwd(), "temp_uploads", Date.now().toString());
+          const outputDir = join(uploadDir, "output");
+          await mkdir(outputDir, { recursive: true });
+
           await runDummyConversion(outputDir, baseName);
           const totalPages = 5;
           for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
             sendSSE(controller, { type: "progress", currentPage, totalPages });
             await sleep(250);
           }
+
+          const zipPath = join(uploadDir, `${baseName}.zip`);
+          await createZip(outputDir, zipPath);
+          const zipBuffer = await readFile(zipPath);
+          const zipBase64 = zipBuffer.toString("base64");
+          sendSSE(controller, { type: "done", zipBase64 });
         } else {
-          await runRealConversion(inputPath, outputDir, (currentPage, totalPages) => {
+          uploadDir = join(process.cwd(), "temp_uploads", Date.now().toString());
+          await mkdir(uploadDir, { recursive: true });
+          const inputPath = join(uploadDir, inputName);
+          const outputDir = join(uploadDir, "output");
+          await mkdir(outputDir, { recursive: true });
+
+          const bytes = await file.arrayBuffer();
+          const buffer = Buffer.from(bytes);
+          await writeFile(inputPath, buffer);
+
+          const zipBase64 = await runServerConversion(inputPath, outputDir, baseName, (currentPage, totalPages) => {
             sendSSE(controller, { type: "progress", currentPage, totalPages });
           });
+
+          sendSSE(controller, { type: "done", zipBase64 });
         }
-
-        const outputPath = join(outputDir, `${baseName}.md`);
-        if (!existsSync(outputPath)) {
-          throw new Error(`Output file not found: ${outputPath}`);
-        }
-
-        const zipPath = join(uploadDir, `${baseName}.zip`);
-        await createZip(outputDir, zipPath);
-
-        const zipBuffer = await readFile(zipPath);
-
-        const fileId = uuidv4();
-        const objectPath = `zips/${fileId}.zip`;
-        const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-
-        await adminStorage.file(objectPath).save(zipBuffer, {
-          contentType: "application/zip",
-        });
-
-        const [downloadUrl] = await adminStorage.file(objectPath).getSignedUrl({
-          action: "read",
-          expires: expiresAt,
-        });
-
-        await adminDb.collection("zipFiles").doc(fileId).set({
-          userId,
-          fileName: `${baseName}.zip`,
-          originalFileName: inputName,
-          objectPath,
-          createdAt: new Date(),
-          expiresAt: new Date(expiresAt),
-          downloadUrl,
-        });
-
-        sendSSE(controller, { type: "done", downloadUrl, expiresAt });
       } catch (error) {
         console.error("Conversion error:", error);
         const message = error instanceof Error ? error.message : "Conversion failed";
         sendSSE(controller, { type: "error", message });
       } finally {
-        try {
-          await rm(uploadDir, { recursive: true, force: true });
-        } catch {}
+        if (uploadDir) {
+          try {
+            await rm(uploadDir, { recursive: true, force: true });
+          } catch {}
+        }
         controller.close();
       }
     },

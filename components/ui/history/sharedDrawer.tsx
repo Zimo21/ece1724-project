@@ -2,52 +2,57 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, X, Share2 } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
-import { getHistory, type HistoryEntry } from "@/lib/history/actions";
+import { getSharedFiles, type SharedFile } from "@/lib/history/shareActions";
 import { getDownloadURL, ref } from "firebase/storage";
 import { firebaseStorage } from "@/lib/firebase/client";
 
-function formatDate(dateStr: string | Date): string {
-  const date = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+function formatDate(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
-export function HistoryDrawer({
+export function SharedDrawer({
   open,
   onClose,
-  onShare,
 }: {
   open: boolean;
   onClose: () => void;
-  onShare: (fileName: string, storagePath: string) => void;
 }) {
   const { user } = useAuth();
-  const [items, setItems] = useState<HistoryEntry[]>([]);
+  const [files, setFiles] = useState<SharedFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && user) {
       setLoading(true);
-      getHistory(user.uid)
-        .then(setItems)
-        .catch(console.error)
+      getSharedFiles()
+        .then(setFiles)
+        .catch((err) => {
+          console.error("Failed to fetch shared files:", err);
+          setFiles([]);
+        })
         .finally(() => setLoading(false));
     }
   }, [open, user]);
 
-  const handleDownload = async (item: HistoryEntry) => {
-    setDownloadingId(item.id);
+  const handleDownload = async (file: SharedFile) => {
+    setDownloadingId(file.id);
     try {
-      const storageRef = ref(firebaseStorage, item.storagePath);
+      const storageRef = ref(firebaseStorage, file.storagePath);
       const url = await getDownloadURL(storageRef);
       window.open(url, "_blank");
     } catch (error) {
@@ -65,59 +70,54 @@ export function HistoryDrawer({
       <button
         className="absolute inset-0 bg-black/20"
         onClick={onClose}
-        aria-label="Close history"
+        aria-label="Close shared drawer"
       />
 
-      <aside className="absolute left-0 top-0 h-full w-[320px] bg-white border-r shadow-xl p-4">
+      <aside className="absolute right-0 top-0 h-full w-[320px] bg-white border-l shadow-xl p-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">History</h3>
+          <h3 className="text-sm font-semibold">Shared with me</h3>
           <Button variant="ghost" className="h-8 px-2" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="mt-4 space-y-2 max-h-[calc(100vh-120px)] overflow-y-auto pr-1">
+        <div className="mt-4 space-y-2 max-h-[calc(100vh-120px)] overflow-y-auto pl-1">
           {loading ? (
             <div className="text-sm text-muted-foreground border rounded-xl p-3">
               Loading...
             </div>
-          ) : items.length === 0 ? (
+          ) : files.length === 0 ? (
             <div className="text-sm text-muted-foreground border rounded-xl p-3">
-              No history yet.
+              No files shared with you yet.
             </div>
           ) : (
-            items.map((item) => (
+            files.map((file) => (
               <div
-                key={item.id}
+                key={file.id}
                 className="border rounded-xl p-3 bg-white/60"
               >
                 <div
                   className="text-sm font-medium truncate"
-                  title={item.fileName}
+                  title={file.fileName}
                 >
-                  {item.fileName}
+                  {file.fileName}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  {formatDate(item.createdAt)}
+                  From: {file.ownerEmail}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {formatDate(file.createdAt)}
                 </div>
 
-                <div className="mt-3 flex justify-end gap-2">
+                <div className="mt-3 flex justify-end">
                   <Button
                     variant="outline"
                     className="h-8 rounded-xl"
-                    onClick={() => onShare(item.fileName, item.storagePath)}
+                    onClick={() => handleDownload(file)}
+                    disabled={downloadingId === file.id}
                   >
-                    <Share2 className="h-4 w-4" />
-                    <span className="ml-1">Share</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-xl"
-                    onClick={() => handleDownload(item)}
-                    disabled={downloadingId === item.id}
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    {downloadingId === item.id ? "..." : "Download"}
+                    <Download className="h-4 w-4 mr-2" />
+                    {downloadingId === file.id ? "Loading..." : "Download"}
                   </Button>
                 </div>
               </div>
