@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
-  const [keepLoggedIn, setKeepLoggedIn] = useState(true); 
+  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +32,6 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await signInWithGoogle();
-      
     } catch (e) {
       setError(e instanceof Error ? e.message : "Google sign-in failed");
     } finally {
@@ -62,15 +61,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 bg-white text-black">
-      <div className="w-full max-w-md border border-black bg-white p-6">
-        <h1 className="text-xl font-semibold">Login</h1>
+    <main className="min-h-screen bg-white text-neutral-900">
+      <div className="relative mx-auto grid min-h-screen max-w-6xl grid-cols-1 items-center gap-10 px-6 py-12 lg:grid-cols-2">
+        <div className="relative z-10 w-full max-w-md rounded-3xl border border-neutral-200 bg-white/90 p-8 shadow-xl backdrop-blur">
+          <div className="mb-6">
+            <div className="mb-2 text-2xl font-semibold">Login</div>
+            <p className="text-sm text-neutral-500">Welcome back! Please sign in.</p>
+          </div>
 
-        <div className="mt-4">
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="w-full rounded-xl border-neutral-200 bg-white py-6 shadow-sm hover:bg-neutral-50"
             onClick={handleGoogle}
             disabled={submitting}
           >
@@ -78,13 +80,15 @@ export default function LoginPage() {
             <span className="ml-2">Sign in with Google</span>
           </Button>
 
-          <div className="my-4 text-center text-sm">Or sign in with email</div>
+          <div className="my-5 text-center text-xs tracking-wider text-neutral-400">
+            Or sign in with email
+          </div>
 
-          <form onSubmit={handleEmailLogin}>
-            <div className="mb-3">
-              <label className="block text-sm mb-1">Email</label>
+          <form onSubmit={handleEmailLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm mb-1 text-neutral-600">Email</label>
               <input
-                className="w-full border border-black px-3 py-2 bg-white text-black"
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -93,11 +97,11 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="mb-3">
-              <label className="block text-sm mb-1">Password</label>
+            <div>
+              <label className="block text-sm mb-1 text-neutral-600">Password</label>
               <div className="flex items-center gap-2">
                 <input
-                  className="flex-1 border border-black px-3 py-2 bg-white text-black"
+                  className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -107,55 +111,63 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="border border-black px-3 py-2 bg-white"
+                  className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50"
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
 
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <label className="flex items-center gap-2 text-sm">
+            <div className="flex items-center justify-between text-sm">
+              <label className="flex items-center gap-2 text-neutral-600">
                 <input
                   type="checkbox"
                   checked={keepLoggedIn}
                   onChange={(e) => setKeepLoggedIn(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 Keep me logged in
               </label>
-
-              <button
-                type="button"
-                className="text-sm underline"
-                onClick={() =>
-                  alert(
-                    "Forgot password not wired yet. Tell me if you want it enabled."
-                  )
-                }
-              >
-                Forgot password?
-              </button>
             </div>
 
             {error && (
-              <p className="mb-3 border border-black p-3 text-sm">{error}</p>
+              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </p>
             )}
 
-            <Button type="submit" className="w-full" disabled={!canSubmit}>
+            <Button
+              type="submit"
+              className="w-full rounded-xl bg-indigo-600 py-6 text-white hover:bg-indigo-700"
+              disabled={!canSubmit}
+            >
               Login
             </Button>
           </form>
 
-          <p className="mt-4 text-sm text-center">
+          <p className="mt-5 text-center text-sm text-neutral-500">
             Don’t have an account?{" "}
             <button
-              className="underline"
+              className="text-indigo-600 hover:underline"
               type="button"
               onClick={() => router.push("/signup")}
             >
               Sign up
             </button>
           </p>
+        </div>
+        <div className="relative hidden h-full w-full items-center justify-center lg:flex">
+          <div className="absolute inset-0">
+            <div className="absolute -top-12 right-10 h-48 w-48 rounded-full bg-gradient-to-br from-indigo-300 via-purple-300 to-pink-300 opacity-70 blur-2xl" />
+            <div className="absolute bottom-6 left-8 h-56 w-56 rounded-full bg-gradient-to-br from-teal-200 via-cyan-300 to-blue-300 opacity-70 blur-2xl" />
+            <div className="absolute top-24 left-1/2 h-36 w-36 -translate-x-1/2 rounded-3xl bg-gradient-to-br from-pink-300 to-orange-300 opacity-80 blur-xl" />
+          </div>
+
+          <div className="relative z-10 max-w-sm text-right">
+            <p className="text-4xl font-semibold leading-tight text-neutral-800">
+              Changing the way <br /> the world writes
+            </p>
+          </div>
         </div>
       </div>
     </main>
