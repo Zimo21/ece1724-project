@@ -142,4 +142,4 @@ temp_uploads/
 *.pdf
 
 # Prisma generated client
-generated/
+generated/.DS_Store

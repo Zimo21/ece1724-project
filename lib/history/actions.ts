@@ -6,6 +6,8 @@ export type HistoryEntry = {
   fileName: string;
   createdAt: string;
   storagePath: string;
+  /** Present when loaded from GET /api/history */
+  shareCount?: number;
 };
 
 export async function saveToHistory(
@@ -80,5 +82,21 @@ export async function getHistory(userId: string): Promise<HistoryEntry[]> {
       return [];
     }
     throw error;
+  }
+}
+
+export async function deleteHistoryEntry(entryId: string): Promise<void> {
+  const user = firebaseAuth.currentUser;
+  if (!user) throw new Error("Not authenticated");
+
+  const token = await user.getIdToken();
+  const res = await fetch(`/api/history?id=${encodeURIComponent(entryId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || "Failed to delete");
   }
 }

@@ -95,6 +95,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const forPath = searchParams.get("storagePath");
+
+  if (forPath) {
+    const outgoing = await prisma.sharedFile.findMany({
+      where: { ownerId: userId, storagePath: forPath },
+      include: { sharedWith: { select: { email: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return NextResponse.json({
+      shares: outgoing.map((s) => ({
+        id: s.id,
+        email: s.sharedWith.email,
+      })),
+    });
+  }
+
   const sharedWithMe = await prisma.sharedFile.findMany({
     where: { sharedWithId: userId },
     include: { owner: { select: { email: true } } },

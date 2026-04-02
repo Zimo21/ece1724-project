@@ -36,6 +36,7 @@ export default function Home() {
   } | null>(null);
   const [shareEmail, setShareEmail] = useState("");
   const [sharing, setSharing] = useState(false);
+  const [shareSuccessTick, setShareSuccessTick] = useState(0);
   const [fileList, setFileList] = useState<FileItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +59,7 @@ export default function Home() {
       );
       if (result.success) {
         setShareModal(null);
+        setShareSuccessTick((n) => n + 1);
       } else {
         alert(result.error || "Failed to share file");
       }
@@ -328,8 +330,71 @@ export default function Home() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         onShare={handleShare}
+        shareSuccessTick={shareSuccessTick}
       />
       <SharedDrawer open={sharedOpen} onClose={() => setSharedOpen(false)} />
+
+      {shareModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="Close share dialog"
+            onClick={() => setShareModal(null)}
+          />
+          <div className="relative w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Share file</h3>
+                <p
+                  className="mt-1 text-xs text-neutral-500 break-all"
+                  title={shareModal.fileName}
+                >
+                  {shareModal.fileName}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setShareModal(null)}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <label className="mt-4 block text-xs font-medium text-neutral-700">
+              Recipient email
+              <input
+                type="email"
+                autoComplete="email"
+                value={shareEmail}
+                onChange={(e) => setShareEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleShareSubmit();
+                }}
+                className="mt-1.5 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                placeholder="user@example.com"
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShareModal(null)}
+                disabled={sharing}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleShareSubmit()}
+                disabled={sharing || !shareEmail.trim()}
+              >
+                {sharing ? "Sharing…" : "Share"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="relative z-10 min-h-screen w-full px-6 py-10 flex items-center justify-center">
         <div className="w-full max-w-5xl rounded-3xl border border-neutral-200 bg-white/90 p-6 shadow-lg backdrop-blur">
@@ -384,7 +449,7 @@ export default function Home() {
                   Drag and drop files here, or click to select
                 </div>
                 <div className="text-xs text-neutral-500">
-                  Supports PDF, PNG, JPG, WEBP
+                  Supports PDF, PNG, JPG, WEBP. You can upload multiple files at once.
                 </div>
               </div>
             </div>
@@ -497,9 +562,6 @@ export default function Home() {
 
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button variant="outline" onClick={handleUploadClick}>
-              Upload
-            </Button>
             <Button
               variant="default"
               disabled={!hasSelected}

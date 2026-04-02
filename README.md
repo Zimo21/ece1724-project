@@ -160,17 +160,20 @@ In addition, the application supports batch processing, allowing multiple docume
 - **Sign in with Google** — one-click sign-in.
 - Or use **email** and **password** in the form, then submit to sign in.
 - Link to **sign up** if you need a new account.
+
 ![Login page](docs/screenshot/login.png)
 
 ### Sign up page (`/signup`)
 
 - Create an account with **email and password** (and any fields shown on that page).
 - After sign-up, you are usually redirected to sign in or straight to the app, depending on configuration.
+
 ![Signup page](docs/screenshot/signUp.png)
 
 ### Home — main converter (`/`)
 
 After you are signed in, you see the **DeepSeek OCR** screen. 
+
 ![Home page](docs/screenshot/upload.png)
 
 Main areas, top to bottom:
@@ -183,7 +186,9 @@ Main areas, top to bottom:
   - You can also **drag files** onto the box.  
   - Multiple files are allowed; each file becomes one row in the list below.
 3. **File list (job queue)**
+
 ![File queue](docs/screenshot/queue.png)
+
   Each row shows:
   - **Checkbox** — check the files you want to convert; unchecked files are skipped when you press Convert.  
   - **File name** and a small **status** label (e.g. ready, converting, done, error).  
@@ -191,7 +196,6 @@ Main areas, top to bottom:
   - **Trash** — removes that row from the list (only affects this session’s queue on screen).  
   - **Download** (arrow-down icon) — after a file is **Done**, tap to download your **ZIP** result. Finished rows uncheck themselves and you can’t check them again for another run from the same row.
 4. **Bottom actions**
-  - **Upload** — same as opening the file picker (duplicate shortcut).  
   - **Convert** — starts conversion for all **checked** rows, **one file after another**. It is disabled if nothing is checked.
 
 ### Processing
@@ -206,20 +210,43 @@ Main areas, top to bottom:
 
 ### History panel
 
-- Open it from the **History** control on the home page.  
-- You see a list of **previous ZIP downloads** (name and time). Tap an entry to open/download if it is still available.
+Open it from the History control on the home page. You will see a list of previously processed files (file name and timestamp). Each item provides the following actions:
+- **Share** — share the file with another user
+- **Download** — download the generated ZIP file
+- **Delete** — permanently remove the file from your history
+
+Users can also view sharing status:
+- Files display “**Shared with (N)**”, indicating how many users the file has been shared with
+- Clicking **expands a list** of recipient emails
+
+Within the shared list:
+- Users can click **Remove** to revoke access for a specific user
+- This only removes sharing access and does **not delete the file**
+
 ![History](docs/screenshot/history.png)
 
 ### Share feature
-- From the **History panel**, users can click the **Share** button on a completed file.
-- A dialog will appear allowing the user to enter another user's **email address**.
-- After confirming, the file is shared and becomes visible to the recipient.
+- From the **History panel**, click the **Share** button on a file
+- A dialog appears where you can enter a **recipient’s email address**
 
 ![Share](docs/screenshot/shareConvertedFile.png)
 
-- Users can open the **Shared with me** panel from the top bar.
-- This panel lists files that have been shared with the current user.
-- Each shared file includes metadata (owner and timestamp) and can be directly **downloaded**.
+After confirming:
+
+- The file is shared with the specified user
+- The recipient will see it in their **Shared with me** panel
+- The file will also appear under “**Shared with (N)**” in your History panel
+
+![Shared](docs/screenshot/sharedWithOthers.png)
+
+### Shared with me panel
+
+Open it from the Shared with me control on the top bar. This panel displays files shared by other users. Each shared file shows:
+- File name
+- Owner (who shared it)
+- Timestamp
+- **Download** — download the file
+- **Remove** — remove the file from your shared list
 
 ![Shared](docs/screenshot/sharedWithMe.png)
 

@@ -1,5 +1,4 @@
 import { firebaseAuth } from "@/lib/firebase/client";
-import type { HistoryEntry } from "./actions";
 
 export type SharedFile = {
   id: string;
@@ -8,6 +7,11 @@ export type SharedFile = {
   ownerEmail: string;
   createdAt: string;
   downloadUrl?: string;
+};
+
+export type ShareRecipient = {
+  id: string;
+  email: string;
 };
 
 export async function shareFile(
@@ -36,6 +40,30 @@ export async function shareFile(
     return { success: false, error: data.error || "Failed to share file" };
   }
   return { success: true };
+}
+
+export async function getShareRecipients(
+  storagePath: string
+): Promise<ShareRecipient[]> {
+  const user = firebaseAuth.currentUser;
+  if (!user) throw new Error("Not authenticated");
+
+  const token = await user.getIdToken();
+  const res = await fetch(
+    `/api/share?storagePath=${encodeURIComponent(storagePath)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if ((data as { error?: string }).error?.includes("Firebase Admin")) {
+      return [];
+    }
+    throw new Error("Failed to fetch share list");
+  }
+
+  const data = (await res.json()) as { shares?: ShareRecipient[] };
+  return data.shares ?? [];
 }
 
 export async function getSharedFiles(): Promise<SharedFile[]> {
