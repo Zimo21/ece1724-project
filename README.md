@@ -1,4 +1,4 @@
-# ece1724-project
+# ECE1724-AI-Powered PDF & Image to Markdown Web Application
 
 ---
 
