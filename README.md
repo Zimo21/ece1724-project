@@ -285,8 +285,11 @@ Open it from the Shared with me control on the top bar. This panel displays file
 - **Firebase Admin (server-only)** — set in `.env.local`:
   - `FIREBASE_CLIENT_EMAIL` — Firebase service account email.
   - `FIREBASE_PRIVATE_KEY` — Firebase service account private key (include `\n` for newlines).
-- **Database** — set in `.env.local`:
+- **Database** — set in `.env`:
   - `DATABASE_URL` — PostgreSQL connection string (e.g., `postgresql://user:password@localhost:5432/deepseek_ocr?schema=public`).
+
+    > **Note:** By default, PostgreSQL database connection string in the `.env` file, **not** `.env.local`. For local development, you will need to copy or create a `.env` file with your `DATABASE_URL` (even if you also have `.env.local` for other variables).  
+
 - **App behavior flags** (optional):
   - `USE_DUMMY_MODEL=true` — skips real Python OCR; use for UI and SSE testing.
   - `USE_DUMMY_MODEL=false` — runs real OCR (requires Python deps and hardware).
