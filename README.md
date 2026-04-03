@@ -372,7 +372,7 @@ For real OCR processing, you need to run a separate OCR server:
    OCR_SERVER_URL=http://127.0.0.1:8000
    ```
 
-2. Run the OCR server (see project documentation for the OCR server setup).
+2. Run the OCR server (see OCR_SERVER_INSTRUCTION.md for the OCR server setup).
 
 #### Firebase Auth Setup
 

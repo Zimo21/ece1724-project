@@ -1,0 +1,6 @@
+vllm==0.17.1
+pymupdf
+pillow
+fastapi
+uvicorn
+python-multipart
