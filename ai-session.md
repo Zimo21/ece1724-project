@@ -1,20 +1,18 @@
 # AI Interaction Record
 
-## Session 1: SSE progress from a spawned Python OCR process
+## Session 1: Bug fix flicking on drag and drop box
 
 ### Prompt (you sent to AI)
 
-Our Next.js App Router route `POST /api/convert` uses `child_process.spawn` to run `run_dpsk_ocr2_torch.py` and needs to stream **per-page** progress to the browser. The Python script prints machine-readable lines `PROGRESS_TOTAL N` and `PROGRESS_CURRENT K` to **stdout** (with `flush=True`). The client must send **multipart form-data** (the uploaded file) and an `Authorization: Bearer <Firebase ID token>` header, so we cannot use `EventSource` (GET-only). How should we (1) buffer and parse stdout in Node without blocking until the process exits, (2) emit SSE frames (`data: {…}\n\n`) from a `ReadableStream` in the Route Handler, and (3) parse those frames on the client from `fetch(...).body.getReader()` when chunks may split mid-event or use `\r\n` line endings?
+Currently there is a bug on the main page for the drag and drop box, when I try to drag and drop files into the box, it flickers, and glitches, do you have suggestions on what can cause this?
 
 ### AI Response (trimmed)
 
-The AI described returning `Content-Type: text/event-stream` with a `ReadableStream`, enqueueing `data:` + JSON + `\n\n` for each progress tick, and on the client reading the stream with `TextDecoder` instead of `EventSource`. It noted splitting incoming bytes on **double newlines** to recover whole SSE events and handling **incomplete** trailing buffers between reads.
+The flickering is caused by dragLeave handler firing when dragging over child elements inside the drop zone. When the cursor hover over a child component inside the drop zone, it triggers handleDragLeave handler, which sets the isDragging state. the The fix is to check if the drag is actually leaving the container.
 
 ### What Your Team Did With It
 
-- We implemented **stdout line buffering** in Node: split on `\n`, keep a carry buffer for incomplete lines, and regex-match `PROGRESS_TOTAL` / `PROGRESS_CURRENT` to call a callback that enqueues SSE `progress` events.
-- We kept `**fetch` + `ReadableStream`** on the client (not `EventSource`) because of **POST + FormData + Bearer auth\*\*; we split SSE frames with `/\r?\n\r?\n/` and extracted the `data: …` line so `\r\n` from the runtime did not break parsing.
-- After integration, we still had to **tune** the parser when events arrived in small TCP chunks; the AI’s “buffer until `\n\n`” idea was necessary but not sufficient until we tested against real `fetch` streaming behavior in Chrome.
+With AI response we understand that the flicking is cause by the handleDragLeave handler firing when the mouse cursor crosses over a child component inside the drag and drop box. In our page.tsx, the styling of the drag and drop box is based on the isDragging state. Which is set by the event handler. However, we have child components inside the drag and drop box such as the upload icon and text boxes. So in this case we need to check whether the relatedTarget is inside the currentTarget: e.currentTarget.contains(e.relatedTarget). After adding this check the bug is resolved.
 
 ## Session 2: Integrating History Drawer in UI and In UI even though the background gradient was visible card wasn't needed help in debugging
 
