@@ -426,7 +426,7 @@ These steps ensured that AI-assisted solutions were adapted, validated, and full
 
 Tanvi Patil - Implemented Authentication, Participated in peer reviews and system design, Implemented Firebase and Firestore deployments, Implemented UX Design
 
-Zimo Zhang - 
+Zimo Zhang - Implemented History and sharing features, Designed sharing access control, Built progress bar and job queue with selection, Updated README and improved UI/UX
 
 Chen Hao Zhang - Imeplemented the main page with basic functions working. Imeplement Postgresql for history and file sharing. Imeplement file sharing feature. Implement OCR model server.
 
