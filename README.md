@@ -8,8 +8,8 @@
 Student Number: 1011076096  
 Email: [tanvi.patil@mail.utoronto.ca](mailto:tanvi.patil@mail.utoronto.ca)  
 - Name: Chen Hao Zhang
-Student Number: XXX  
-Email: XXX  
+Student Number: 999272228  
+Email: [chenhao.zhang@mail.utoronto.ca](mailto:chenhao.zhang@mail.utoronto.ca)
 - Name: Zimo Zhang
 Student Number: 1007668542
 Email: [zzzzimo.zhang@mail.utoronto.ca](mailto:zzzzimo.zhang@mail.utoronto.ca)
@@ -424,6 +424,8 @@ These steps ensured that AI-assisted solutions were adapted, validated, and full
 Tanvi Patil - Implemented Authentication, Participated in peer reviews and system design, Implemented Firebase and Firestore deployments, Implemented UX Design
 
 Zimo Zhang - 
+
+Chen Hao Zhang - Imeplemented the main page with basic functions working. Imeplement Postgresql for history and file sharing. Imeplement file sharing feature. Implement OCR model server.
 
 ---
 
