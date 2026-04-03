@@ -140,6 +140,11 @@ export default function Home() {
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
+    const currentTarget = e.currentTarget;
+    const relatedTarget = e.relatedTarget as Node | null;
+    if (relatedTarget && currentTarget.contains(relatedTarget)) {
+      return;
+    }
     setIsDragging(false);
   };
 

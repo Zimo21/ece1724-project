@@ -405,6 +405,12 @@ to be completed after completing ai-session.md
 
 ---
 
+## Video Demo
+
+<https://drive.google.com/file/d/160JbIz7sOrNNh5Ngq_0XmZfK7iOfeAr1/view?usp=drive_link>
+
+---
+
 ## Individual Contributions
 
 Tanvi Patil - Implemented Authentication, Participated in peer reviews and system design, Implemented Firebase and Firestore deployments, Implemented UX Design
