@@ -1,6 +1,6 @@
 # AI Interaction Record
 
-## Session 1: SSE progress from a spawned Python OCR process (POST `/api/convert`)
+## Session 1: SSE progress from a spawned Python OCR process
 
 ### Prompt (you sent to AI)
 
@@ -15,8 +15,6 @@ The AI described returning `Content-Type: text/event-stream` with a `ReadableStr
 - We implemented **stdout line buffering** in Node: split on `\n`, keep a carry buffer for incomplete lines, and regex-match `PROGRESS_TOTAL` / `PROGRESS_CURRENT` to call a callback that enqueues SSE `progress` events.
 - We kept `**fetch` + `ReadableStream`** on the client (not `EventSource`) because of **POST + FormData + Bearer auth\*\*; we split SSE frames with `/\r?\n\r?\n/` and extracted the `data: …` line so `\r\n` from the runtime did not break parsing.
 - After integration, we still had to **tune** the parser when events arrived in small TCP chunks; the AI’s “buffer until `\n\n`” idea was necessary but not sufficient until we tested against real `fetch` streaming behavior in Chrome.
-
-To be completed Session 3
 
 ## Session 2: Integrating History Drawer in UI and In UI even though the background gradient was visible card wasn't needed help in debugging
 
@@ -39,20 +37,22 @@ The card didn’t have a higher z-index, so it was hidden.
 - Implemented the History changes
 - We tried with a few alignments suggested by AI
 
-## Session 3 (e.g., Diagnosing unexpected UI behavior)
+## Session 3 Designing sharing and access control features
 
 ### Prompt (you sent to AI)
+In my web app, I have a History panel and a "Shared with me" panel. I want to support file sharing between users. 
 
-<copy/paste>
+What is the best way to design actions like delete, remove, and sharing management? 
 
 ### AI Response (trimmed if long)
-
-<copy/paste or summary>
+- Only the file owner should be able to delete files
+- Shared users should not delete files, but instead remove the file from their own view
+- The sharing relationship should be clearly displayed (e.g., a list of users the file is shared with)
+- Each shared user entry can include a remove access action for better control
 
 ### What Your Team Did With It
-
-1-3 bullet points describing:
-
-- What was useful
-- What was incorrect, misleading, or not applicable to your project
-- How your team verified, modified, or replaced the suggestion
+The idea of separating Delete (owner) and Remove (shared user) was very useful and helped us design a clearer permission model. Some suggestions were too general, so we adapted them to fit our UI structure (History panel vs. Shared panel). We implemented:
+- Delete in the History panel (owner only)
+- Remove in the Shared with me panel (removes from user’s view only)
+- A shared user list with per-user remove access in the History panel
+- We also refined button labels (e.g., avoiding confusion between delete and remove) to improve usability.

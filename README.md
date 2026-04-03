@@ -401,8 +401,16 @@ For real OCR processing, you need to run a separate OCR server:
 
 ## AI Assistance & Verification (Summary)
 
-to be completed after completing ai-session.md
+AI tools were used throughout the project to support **architecture design, debugging, and feature implementation**. Specifically, AI contributed to (1) designing the **SSE streaming pipeline** between a Python OCR process and the frontend, (2) debugging UI issues such as **layout and z-index conflicts**, and (3) defining a clear **sharing and access control model** (e.g., distinguishing between delete and remove actions).
 
+We critically evaluated AI suggestions rather than applying them directly. For example, in the SSE implementation (see *ai-session.md, Session 1*), the initial suggestion to split events by double newlines was not sufficient in practice. Real streaming behavior introduced edge cases such as chunk boundaries and `\r\n` line endings, requiring additional buffering logic and refinement.
+
+Correctness was verified through **manual testing and debugging workflows**, including:
+- Testing full user flows (upload → convert → progress updates → download)
+- Inspecting streamed data and logs to ensure correct SSE parsing
+- Verifying UI interactions (e.g., share, remove, delete) across different panels
+
+These steps ensured that AI-assisted solutions were adapted, validated, and fully integrated into our application.
 ---
 
 ## Video Demo
@@ -414,6 +422,8 @@ to be completed after completing ai-session.md
 ## Individual Contributions
 
 Tanvi Patil - Implemented Authentication, Participated in peer reviews and system design, Implemented Firebase and Firestore deployments, Implemented UX Design
+
+Zimo Zhang - 
 
 ---
 
