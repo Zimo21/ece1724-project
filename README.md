@@ -282,6 +282,7 @@ Open it from the Shared with me control on the top bar. This panel displays file
   - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
   - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
   - `NEXT_PUBLIC_FIREBASE_APP_ID`
+  - Credentials sent to TA
 - **Firebase Admin (server-only)** — set in `.env.local`:
   - `FIREBASE_CLIENT_EMAIL` — Firebase service account email.
   - `FIREBASE_PRIVATE_KEY` — Firebase service account private key (include `\n` for newlines).
